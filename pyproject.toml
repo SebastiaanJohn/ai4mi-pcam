@@ -1,7 +1,10 @@
 [tool.ruff]
-ignore = ["C901", "E501", "E741", "W605", "G004"]
-select = ["E", "F", "I", "W", "N", "D", "S", "UP"]
-fixable = ["E", "F", "I", "W", "D", "N", "S", "UP"]
+select = ["ALL"]
+ignore = ["C901", "PLR", "ANN101", "ISC002", "ANN102", "ANN003", "FBT", "ANN001", "ANN002", "ANN102", "SLF", "ARG001", "TRY300", "PERF203", "A003"]
+
+# Allow autofix for all enabled rules (when `--fix`) is provided.
+fixable = ["A", "B", "W", "D", "E", "F", "I", "Q", "COM", "UP"]
+unfixable = []
 
 # Same as `black`'s default.
 line-length = 88
