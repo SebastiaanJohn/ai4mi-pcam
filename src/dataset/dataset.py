@@ -19,7 +19,7 @@ class PCAMDataset(Dataset):
         data_file_path: Path,
         target_file_path: Path,
         transform: Callable | None = None,
-        lazy_loading: bool = False
+        lazy_loading: bool = False,
     ) -> None:
         """PCAM dataset constructor.
 
@@ -34,18 +34,19 @@ class PCAMDataset(Dataset):
         self._transform = transform
         self._lazy_loading = lazy_loading
 
-        with h5py.File(self._data_file_path, 'r') as f:
-            self._data_length = len(f['x'])
+        with h5py.File(self._data_file_path, "r") as f:
+            self._data_length = len(f["x"])
             if not self._lazy_loading:
-                self._data = f['x'][:]
+                self._data = f["x"][:]
 
-        with h5py.File(self._target_file_path, 'r') as f:
-            _target_length = len(f['y'])
+        with h5py.File(self._target_file_path, "r") as f:
+            _target_length = len(f["y"])
             if not self._lazy_loading:
-                self._target = torch.tensor(f['y'][:], dtype=torch.long).squeeze()
+                self._target = torch.tensor(f["y"][:], dtype=torch.long).squeeze()
 
         if self._data_length != _target_length:
-            raise ValueError("Mismatch between data and target lengths.")
+            msg = "Mismatch between data and target lengths."
+            raise ValueError(msg)
 
     def __len__(self) -> int:
         """Return the length of the dataset."""
@@ -54,11 +55,11 @@ class PCAMDataset(Dataset):
     def __getitem__(self, idx: int) -> tuple[ImageType, torch.Tensor]:
         """Return the item at the given index."""
         if self._lazy_loading:
-            with h5py.File(self._data_file_path, 'r') as f:
-                sample = Image.fromarray(f['x'][idx])
+            with h5py.File(self._data_file_path, "r") as f:
+                sample = Image.fromarray(f["x"][idx])
 
-            with h5py.File(self._target_file_path, 'r') as f:
-                target = torch.tensor(f['y'][idx], dtype=torch.long).squeeze()
+            with h5py.File(self._target_file_path, "r") as f:
+                target = torch.tensor(f["y"][idx], dtype=torch.long).squeeze()
         else:
             sample = Image.fromarray(self._data[idx])
             target = self._target[idx]
@@ -69,8 +70,8 @@ class PCAMDataset(Dataset):
         return sample, target
 
 if __name__ == "__main__":
-    data_path = Path('../ai4mi-pcam/data/camelyonpatch_level_2_split_train_x.h5')
-    target_path = Path('../ai4mi-pcam/data/camelyonpatch_level_2_split_train_y.h5')
+    data_path = Path("../ai4mi-pcam/data/camelyonpatch_level_2_split_train_x.h5")
+    target_path = Path("../ai4mi-pcam/data/camelyonpatch_level_2_split_train_y.h5")
 
     data_transforms = transforms.Compose([
         transforms.RandomHorizontalFlip(),
