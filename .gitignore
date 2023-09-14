@@ -159,3 +159,4 @@ tb_logs/
 
 data/*.csv
 data/*.h5
+lightning_logs/

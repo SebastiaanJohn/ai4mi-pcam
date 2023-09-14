@@ -66,6 +66,8 @@ class PCAMDataset(Dataset):
 
         if self._transform:
             sample = self._transform(sample)
+        else:
+            sample = transforms.ToTensor()(sample)
 
         return sample, target
 
@@ -81,5 +83,5 @@ if __name__ == "__main__":
 
     dataset = PCAMDataset(data_path, target_path, transform=data_transforms, lazy_loading=True)
     print(f"{len(dataset)=}")
-    image, target = dataset[0]
+    image, target = dataset[10]
     print(image.shape, target)

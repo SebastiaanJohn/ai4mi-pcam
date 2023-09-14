@@ -7,7 +7,7 @@ fixable = ["A", "B", "W", "D", "E", "F", "I", "Q", "COM", "UP"]
 unfixable = []
 
 # Same as `black`'s default.
-line-length = 88
+line-length = 90
 
 # Assume Python 3.10.
 target-version = "py310"
