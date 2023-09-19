@@ -1,15 +1,12 @@
 """Main interface for the PCAM dataset."""
 
 
-import importlib
-import inspect
 from typing import Any
 
 import lightning.pytorch as pl
 import torch
-import torch.optim.lr_scheduler as lrs
 from PIL.Image import Image
-from torch import nn
+from torch import nn, optim
 from torchmetrics import Accuracy
 
 
@@ -20,32 +17,13 @@ class PCAMLitModule(pl.LightningModule):
         """PyTorch Lightning module constructor."""
         super().__init__()
         self.save_hyperparameters()
-        self._load_model()
+        self.model = model
         self.compile_model = compile_model
         self.criterion = nn.CrossEntropyLoss()
 
         self.train_acc = Accuracy(task="binary", num_classes=2)
         self.val_acc = Accuracy(task="binary", num_classes=2)
         self.test_acc = Accuracy(task="binary", num_classes=2)
-
-    def _load_model(self) -> None:
-        """Load the model."""
-        model_name = self.hparams.model
-        camel_name = "".join(word.capitalize() for word in model_name.split("_"))
-        try:
-            model = getattr(importlib.import_module(f".{model_name}", package=__package__), camel_name)
-        except (ImportError, AttributeError) as e:
-            error_msg = f"Failed to import the model class '{camel_name}' from the module '.{model_name}'. " \
-                        f"Please make sure the module and class names are correct."
-            raise ValueError(error_msg) from e
-        self.model = self._initialize_model(model)
-
-    def _initialize_model(self, model: type, **kwargs) -> nn.Module:
-        """Initialize a model with parameters from self.hparams dictionary."""
-        class_args = inspect.getfullargspec(model.__init__).args[1:]
-        model_args = {arg: getattr(self.hparams, arg) for arg in class_args if arg in self.hparams}
-        model_args.update(kwargs)
-        return model(**model_args)
 
     def _model_step(self, batch: tuple[Image, torch.Tensor]) -> float:
         """Performs a single step on a batch of data."""
@@ -99,7 +77,7 @@ class PCAMLitModule(pl.LightningModule):
 
     def configure_optimizers(self) -> dict[str, Any]:
         """Configure the optimizer."""
-        optimizer = torch.optim.Adam(
+        optimizer = optim.Adam(
             self.parameters(),
             lr=self.hparams.lr,
             weight_decay=self.hparams.weight_decay
@@ -111,7 +89,7 @@ class PCAMLitModule(pl.LightningModule):
             return optimizer
 
         if self.hparams.lr_scheduler == "step":
-            scheduler = lrs.StepLR(
+            scheduler = optim.lr_scheduler.StepLR(
                 optimizer,
                 step_size=self.hparams.lr_decay_steps,
                 gamma=self.hparams.lr_decay_rate,
@@ -121,4 +99,3 @@ class PCAMLitModule(pl.LightningModule):
             raise ValueError(error_msg)
 
         return {"optimizer": optimizer, "lr_scheduler": scheduler}
-
