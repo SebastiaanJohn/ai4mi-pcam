@@ -13,3 +13,4 @@ dependencies:
   - lightning
   - pip:
     - ruff
+    - lightning[pytorch-extra]"

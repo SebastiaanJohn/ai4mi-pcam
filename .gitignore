@@ -157,6 +157,4 @@ tb_logs/
 
 # ############################# PROJECT-SPECIFIC ##############################
 
-data/*.csv
-data/*.h5
-lightning_logs/
+*.h5
