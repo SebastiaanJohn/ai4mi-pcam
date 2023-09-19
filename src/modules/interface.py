@@ -72,7 +72,7 @@ class PCAMLitModule(pl.LightningModule):
         self.log("test/acc", self.test_acc, on_step=False, on_epoch=True, prog_bar=True)
 
     def setup(self, stage: str) -> None:
-        """Lightning hook that is called at the beginning of fit (train + validate), validate, test, or predict."""
+        """Compile the model if needed."""
         if self.hparams.compile_model and stage == "fit":
             self.model = torch.compile(self.model)
 
