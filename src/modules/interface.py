@@ -95,12 +95,6 @@ class PCAMLitModule(pl.LightningModule):
                 step_size=self.hparams.lr_decay_steps,
                 gamma=self.hparams.lr_decay_rate,
             )
-        elif self.hparams.lr_scheduler == "cosine":
-            scheduler = lrs.CosineAnnealingLR(
-                optimizer,
-                T_max=self.hparams.lr_decay_steps,
-                eta_min=self.hparams.lr_decay_min_lr,
-            )
         else:
             error_msg = "Invalid lr_scheduler type!"
             raise ValueError(error_msg)
