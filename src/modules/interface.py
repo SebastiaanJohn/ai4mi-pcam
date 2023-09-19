@@ -13,12 +13,14 @@ from torchmetrics import Accuracy
 class PCAMLitModule(pl.LightningModule):
     """PyTorch Lightning module for PCAM dataset."""
 
-    def __init__(self, model: nn.Module, compile_model: bool) -> None:
+    def __init__(self, model: nn.Module, compile_model: bool, lr: float = 1e-3, lr_scheduler: str | None= None) -> None:
         """PyTorch Lightning module constructor."""
         super().__init__()
-        self.save_hyperparameters()
+        self.save_hyperparameters(ignore=["model"])
         self.model = model
         self.compile_model = compile_model
+        self.lr = lr
+        self.lr_scheduler = lr_scheduler
         self.criterion = nn.CrossEntropyLoss()
 
         self.train_acc = Accuracy(task="binary", num_classes=2)
