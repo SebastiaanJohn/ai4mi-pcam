@@ -3,8 +3,9 @@
 from pathlib import Path
 
 import lightning.pytorch as pl
-from dataset.dataset import PCAMDataset
 from torch.utils.data import DataLoader
+
+from .dataset import PCAMDataset
 
 
 class PCAMDataModule(pl.LightningDataModule):
@@ -29,14 +30,18 @@ class PCAMDataModule(pl.LightningDataModule):
         """Set up the data."""
         if stage == "fit":
             self._train_dataset = PCAMDataset(
-                data_file_path=self._data_dir / "camelyonpatch_level_2_split_train_x.h5",
-                target_file_path=self._data_dir / "camelyonpatch_level_2_split_train_y.h5",
+                data_file_path=self._data_dir
+                / "camelyonpatch_level_2_split_train_x.h5",
+                target_file_path=self._data_dir
+                / "camelyonpatch_level_2_split_train_y.h5",
                 transform=self._transform,
                 lazy_loading=self._lazy_loading,
             )
             self._val_dataset = PCAMDataset(
-                data_file_path=self._data_dir / "camelyonpatch_level_2_split_valid_x.h5",
-                target_file_path=self._data_dir / "camelyonpatch_level_2_split_valid_y.h5",
+                data_file_path=self._data_dir
+                / "camelyonpatch_level_2_split_valid_x.h5",
+                target_file_path=self._data_dir
+                / "camelyonpatch_level_2_split_valid_y.h5",
                 transform=self._transform,
                 lazy_loading=self._lazy_loading,
             )
@@ -44,7 +49,8 @@ class PCAMDataModule(pl.LightningDataModule):
         if stage == "test":
             self._test_dataset = PCAMDataset(
                 data_file_path=self._data_dir / "camelyonpatch_level_2_split_test_x.h5",
-                target_file_path=self._data_dir / "camelyonpatch_level_2_split_test_y.h5",
+                target_file_path=self._data_dir
+                / "camelyonpatch_level_2_split_test_y.h5",
                 transform=self._transform,
                 lazy_loading=self._lazy_loading,
             )

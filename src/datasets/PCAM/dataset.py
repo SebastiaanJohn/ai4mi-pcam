@@ -1,4 +1,4 @@
-"""Dataset module."""
+"""Implementation of the PCAM dataset."""
 
 from collections.abc import Callable
 from pathlib import Path
@@ -26,8 +26,10 @@ class PCAMDataset(Dataset):
         Args:
             data_file_path (Path): Path to the data file.
             target_file_path (Path): Path to the target file.
-            transform (Callable | None, optional): Transform to apply to the data. Defaults to None.
-            lazy_loading (bool, optional): Whether to load the data lazily. Defaults to False.
+            transform (Callable | None, optional): Transform to apply to the data.
+            Defaults to None.
+            lazy_loading (bool, optional): Whether to load the data lazily.
+            Defaults to False.
         """
         self._data_file_path = data_file_path
         self._target_file_path = target_file_path
@@ -70,18 +72,3 @@ class PCAMDataset(Dataset):
             sample = transforms.ToTensor()(sample)
 
         return sample, target
-
-if __name__ == "__main__":
-    data_path = Path("../ai4mi-pcam/data/camelyonpatch_level_2_split_train_x.h5")
-    target_path = Path("../ai4mi-pcam/data/camelyonpatch_level_2_split_train_y.h5")
-
-    data_transforms = transforms.Compose([
-        transforms.RandomHorizontalFlip(),
-        transforms.RandomRotation(10),
-        transforms.ToTensor(),
-    ])
-
-    dataset = PCAMDataset(data_path, target_path, transform=data_transforms, lazy_loading=True)
-    print(f"{len(dataset)=}")
-    image, target = dataset[10]
-    print(image.shape, target)

@@ -1,17 +1,13 @@
-"""Main module for the PCAM dataset."""
+"""Main interface for the PCAM dataset."""
 
-import logging
-from pathlib import Path
 
 import lightning.pytorch as pl
 import torch
-from dataset.datamodule import PCAMDataModule
-from models.base_model import DebugCNN
 from PIL.Image import Image as ImageType
 from torch import nn, optim
 
 
-class PCAMModule(pl.LightningModule):
+class PCAMClassifierModule(pl.LightningModule):
     """PyTorch Lightning module for PCAM dataset."""
 
     def __init__(self, model: nn.Module) -> None:
@@ -53,14 +49,3 @@ class PCAMModule(pl.LightningModule):
     def configure_optimizers(self) -> optim.Optimizer:
         """Configure the optimizer."""
         return optim.Adam(self.parameters(), lr=1e-3)
-
-
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-    data_dir = Path("/Users/sebastiaan/Developer/ai4mi-pcam/data")
-
-    model = DebugCNN()
-    pcam_module = PCAMModule(model)
-    trainer = pl.Trainer(fast_dev_run=True, profiler="simple")
-    data_module = PCAMDataModule(data_dir=data_dir, lazy_loading=True)
-    trainer.fit(model=pcam_module, datamodule=data_module)
