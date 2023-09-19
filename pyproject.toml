@@ -6,8 +6,8 @@ ignore = ["C901", "PLR", "ANN101", "ISC002", "ANN102", "ANN003", "FBT", "ANN001"
 fixable = ["A", "B", "W", "D", "E", "F", "I", "Q", "COM", "UP"]
 unfixable = []
 
-# Same as `black`'s default.
-line-length = 90
+# 119 because the rest sucks
+line-length = 119
 
 # Assume Python 3.10.
 target-version = "py310"
