@@ -11,8 +11,7 @@ from .dataset import PCAMDataset
 class PCAMDataModule(pl.LightningDataModule):
     """PyTorch Lightning DataModule for PCAM dataset."""
 
-    def __init__(
-        self,
+    def __init__(self,
         data_dir: Path,
         batch_size: int = 32,
         num_workers: int = 8,
@@ -25,6 +24,8 @@ class PCAMDataModule(pl.LightningDataModule):
         self._num_workers = num_workers
         self._lazy_loading = lazy_loading
         self._transform = None
+
+        self.num_classes = 2
 
     def setup(self, stage: str) -> None:
         """Set up the data."""

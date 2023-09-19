@@ -1,18 +1,23 @@
-"""Main module for the PCAM dataset."""
+"""Main module for the project."""
+
+from argparse import ArgumentParser
 
 
-import lightning.pytorch as pl
-from lightning.pytorch.cli import LightningCLI
+def main(args) -> None:
+    """Main method for the project."""
 
-from .datasets.pcam import PCAMDataModule
-from .modules.interface import PCAMClassifierModule
-
-
-def cli_main() -> None:
-    """Main method for the PCAM dataset."""
-    pl.seed_everything(42)
-    LightningCLI(PCAMClassifierModule, PCAMDataModule)
 
 
 if __name__ == "__main__":
-    cli_main()
+    parser = ArgumentParser()
+
+    parser.add_argument(
+        "--data_dir",
+        type=str,
+        default="data",
+        help="Path to the directory containing the data.",
+    )
+
+    args = parser.parse_args()
+
+    main(args)
