@@ -1,6 +1,8 @@
 """Main interface for the PCAM dataset."""
 
 
+import importlib
+import inspect
 from typing import Any
 
 import lightning.pytorch as pl
@@ -18,7 +20,7 @@ class PCAMLitModule(pl.LightningModule):
         """PyTorch Lightning module constructor."""
         super().__init__()
         self.save_hyperparameters()
-        self.model = model
+        self._load_model()
         self.compile_model = compile_model
         self.criterion = nn.CrossEntropyLoss()
 
@@ -26,11 +28,26 @@ class PCAMLitModule(pl.LightningModule):
         self.val_acc = Accuracy(task="binary", num_classes=2)
         self.test_acc = Accuracy(task="binary", num_classes=2)
 
-    def forward(self, img: torch.Tensor) -> torch.Tensor:
-        """Forward pass of the model."""
-        return self.model(img)
+    def _load_model(self) -> None:
+        """Load the model."""
+        model_name = self.hparams.model
+        camel_name = "".join(word.capitalize() for word in model_name.split("_"))
+        try:
+            model = getattr(importlib.import_module(f".{model_name}", package=__package__), camel_name)
+        except (ImportError, AttributeError) as e:
+            error_msg = f"Failed to import the model class '{camel_name}' from the module '.{model_name}'. " \
+                        f"Please make sure the module and class names are correct."
+            raise ValueError(error_msg) from e
+        self.model = self._initialize_model(model)
 
-    def model_step(self, batch: tuple[Image, torch.Tensor]) -> float:
+    def _initialize_model(self, model: type, **kwargs) -> nn.Module:
+        """Initialize a model with parameters from self.hparams dictionary."""
+        class_args = inspect.getfullargspec(model.__init__).args[1:]
+        model_args = {arg: getattr(self.hparams, arg) for arg in class_args if arg in self.hparams}
+        model_args.update(kwargs)
+        return model(**model_args)
+
+    def _model_step(self, batch: tuple[Image, torch.Tensor]) -> float:
         """Performs a single step on a batch of data."""
         img, target = batch
         logits = self(img)
@@ -38,9 +55,13 @@ class PCAMLitModule(pl.LightningModule):
         preds = torch.argmax(logits, dim=1)
         return loss, preds, target
 
+    def forward(self, img: torch.Tensor) -> torch.Tensor:
+        """Forward pass of the model."""
+        return self.model(img)
+
     def training_step(self, batch: tuple[Image, torch.Tensor], batch_idx: int) -> float:
         """Return the loss for a training step."""
-        loss, preds, targets = self.model_step(batch)
+        loss, preds, targets = self._model_step(batch)
 
         # Update logs and metrics
         self.train_acc(preds, targets)
@@ -51,7 +72,7 @@ class PCAMLitModule(pl.LightningModule):
 
     def validation_step(self, batch: tuple[Image, torch.Tensor], batch_idx: int) -> None:
         """Return the loss for a validation step."""
-        loss, preds, targets = self.model_step(batch)
+        loss, preds, targets = self._model_step(batch)
 
         # Update logs and metrics
         self.val_acc(preds, targets)
@@ -64,7 +85,7 @@ class PCAMLitModule(pl.LightningModule):
 
     def test_step(self, batch: tuple[Image, torch.Tensor], batch_idx: int) -> None:
         """Return the loss for a test step."""
-        loss, preds, targets = self.model_step(batch)
+        loss, preds, targets = self._model_step(batch)
 
         # Update logs and metrics
         self.test_acc(preds, targets)
@@ -100,3 +121,4 @@ class PCAMLitModule(pl.LightningModule):
             raise ValueError(error_msg)
 
         return {"optimizer": optimizer, "lr_scheduler": scheduler}
+
