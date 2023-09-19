@@ -5,3 +5,4 @@ lightning
 ruff
 lightning[pytorch-extra]
 logeru
+wandb

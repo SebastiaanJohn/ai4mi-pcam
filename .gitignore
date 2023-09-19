@@ -157,3 +157,5 @@ tb_logs/
 # ############################# PROJECT-SPECIFIC ##############################
 
 *.h5
+# any file/directory in experiments
+experiments/

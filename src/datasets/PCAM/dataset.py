@@ -66,9 +66,9 @@ class PCAMDataset(Dataset):
             sample = Image.fromarray(self._data[idx])
             target = self._target[idx]
 
-        if self._transform:
-            sample = self._transform(sample)
-        else:
-            sample = transforms.ToTensor()(sample)
+        sample = (
+            self._transform(sample) if
+            self._transform else transforms.ToTensor()(sample)
+        )
 
         return sample, target

@@ -46,7 +46,7 @@ class PCAMLitModule(pl.LightningModule):
         # Update logs and metrics
         self.train_acc(preds, targets)
         self.log("train/loss", loss, on_step=False, on_epoch=True, prog_bar=True)
-        self.log("train/acc", self.train_acc, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("train/acc", self.train_acc, on_step=True, on_epoch=True, prog_bar=True)
 
         return loss
 
