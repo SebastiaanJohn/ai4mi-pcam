@@ -1,0 +1,7 @@
+pytorch-cuda>=11.8
+pytorch>=2.0.0
+numpy
+lightning
+ruff
+lightning[pytorch-extra]
+logeru

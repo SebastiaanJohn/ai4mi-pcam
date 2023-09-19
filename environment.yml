@@ -14,4 +14,4 @@ dependencies:
   - pip:
     - ruff
     - lightning[pytorch-extra]"
-    - click
+    - logeru
