@@ -13,7 +13,9 @@ from torchmetrics import Accuracy
 class PCAMLitModule(pl.LightningModule):
     """PyTorch Lightning module for PCAM dataset."""
 
-    def __init__(self, model: nn.Module, compile_model: bool, lr: float = 1e-3, lr_scheduler: str | None= None) -> None:
+    def __init__(
+        self, model: nn.Module, compile_model: bool, lr: float = 1e-3, lr_scheduler: str | None = None
+    ) -> None:
         """PyTorch Lightning module constructor."""
         super().__init__()
         self.save_hyperparameters(ignore=["model"])
@@ -82,9 +84,7 @@ class PCAMLitModule(pl.LightningModule):
         optimizer = optim.Adam(
             self.parameters(),
             lr=self.hparams.lr,
-            weight_decay=self.hparams.weight_decay
-            if hasattr(self.hparams, "weight_decay")
-            else 0,
+            weight_decay=self.hparams.weight_decay if hasattr(self.hparams, "weight_decay") else 0,
         )
 
         if self.hparams.lr_scheduler is None:
@@ -92,9 +92,7 @@ class PCAMLitModule(pl.LightningModule):
 
         if self.hparams.lr_scheduler == "step":
             scheduler = optim.lr_scheduler.StepLR(
-                optimizer,
-                step_size=self.hparams.lr_decay_steps,
-                gamma=self.hparams.lr_decay_rate,
+                optimizer, step_size=self.hparams.lr_decay_steps, gamma=self.hparams.lr_decay_rate
             )
         else:
             error_msg = "Invalid lr_scheduler type!"

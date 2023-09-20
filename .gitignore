@@ -156,6 +156,22 @@ tb_logs/
 
 # ############################# PROJECT-SPECIFIC ##############################
 
+# Lisa Slurm job and output files
+/slurm
+
+# Lisa help files
+/startenv.sh
+/endenv.sh
+/tensorboard.sh
+
+# Pdfs
+*.pdf
+
+# Vscode
+.vscode
+
+# Project-specific files (e.g. datasets, models, etc.)
 *.h5
-# any file/directory in experiments
+*.gz
+# Any file/directory in experiments
 experiments/

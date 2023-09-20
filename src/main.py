@@ -17,11 +17,15 @@ def main(args) -> None:
     logger.info("Starting training process...")
 
     # Setup Weights & Biases
-    wandb_logger = WandbLogger(
-        project=args.wandb_project,
-        entity=args.wandb_entity,
-        save_dir=Path(__file__).resolve().parent.parent / args.wandb_dir,
-    ) if args.wandb else None
+    wandb_logger = (
+        WandbLogger(
+            project=args.wandb_project,
+            entity=args.wandb_entity,
+            save_dir=Path(__file__).resolve().parent.parent / args.wandb_dir,
+        )
+        if args.wandb
+        else None
+    )
 
     wandb_logger.experiment.config["batch_size"] = args.batch_size
 
@@ -39,6 +43,7 @@ def main(args) -> None:
     trainer.fit(lit_model, data_module)
 
     wandb.finish()
+
 
 if __name__ == "__main__":
     parser = ArgumentParser()
@@ -76,8 +81,10 @@ if __name__ == "__main__":
         sys.stderr,
         level="DEBUG" if args.debug else "INFO",
         colorize=True,
-        format="<g>{time:YYYY-MM-DD HH:mm:ss}</g> | <lvl>{level}</lvl> | "
-            "<c>{name}</c>:<c>{function}</c>:<c>{line}</c> - <lvl>{message}</lvl>",
+        format=(
+            "<g>{time:YYYY-MM-DD HH:mm:ss}</g> | <lvl>{level}</lvl> | "
+            "<c>{name}</c>:<c>{function}</c>:<c>{line}</c> - <lvl>{message}</lvl>"
+        ),
     )
 
     main(args)
