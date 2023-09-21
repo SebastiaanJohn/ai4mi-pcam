@@ -8,8 +8,8 @@ import wandb
 from datasets.pcam import PCAMDataModule
 from loguru import logger
 from modules import PCAMLitModule
-from modules.models import SimpleCNN
 from pytorch_lightning.loggers import WandbLogger
+from utils import load_model
 
 
 def main(args) -> None:
@@ -33,7 +33,7 @@ def main(args) -> None:
     data_module = PCAMDataModule(data_dir=args.data_dir, lazy_loading=True)
 
     # Instantiate the model
-    model = SimpleCNN()
+    model = load_model(args.model)
     lit_model = PCAMLitModule(model=model, compile_model=args.compile_model)
 
     # Instantiate the trainer
@@ -55,6 +55,7 @@ if __name__ == "__main__":
     parser.add_argument("--lazy_loading", type=bool, default=True)
 
     # Model
+    parser.add_argument("--model", type=str, default="simple_cnn")
     parser.add_argument("--compile_model", type=bool, default=False)
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--lr_scheduler", type=str, default=None)
