@@ -18,6 +18,14 @@ def load_model(model_name: str, input_size: int) -> nn.Module:
             model.fc = nn.Linear(num_features, 2)
 
             return model
+        case "resnet18":
+            model = models.resnet18()
+
+            # Replace the last layer
+            num_features = model.fc.in_features
+            model.fc = nn.Linear(num_features, 2)
+
+            return model
         case _:
             error_msg = f"Model {model_name} not supported."
             raise ValueError(error_msg)

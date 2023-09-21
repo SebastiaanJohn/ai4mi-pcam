@@ -6,6 +6,7 @@ from pathlib import Path
 import lightning.pytorch as pl
 import wandb
 from datasets.pcam import PCAMDataModule
+from lightning.pytorch.callbacks.early_stopping import EarlyStopping
 from loguru import logger
 from modules import PCAMLitModule
 from pytorch_lightning.loggers import WandbLogger
@@ -40,8 +41,20 @@ def main(args) -> None:
     model = load_model(args.model, input_size=32 if args.crop_center else 96)
     lit_model = PCAMLitModule(model=model, compile_model=args.compile_model)
 
+    callbacks = []
+    if args.early_stopping:
+        early_stopping = EarlyStopping(monitor="val/loss", mode="min")
+        callbacks.append(early_stopping)
+
     # Instantiate the trainer
-    trainer = pl.Trainer(fast_dev_run=args.dev_run, logger=wandb_logger, max_epochs=args.epochs)
+    trainer = pl.Trainer(
+        fast_dev_run=args.dev_run,
+        limit_train_batches=args.train_size,
+        limit_val_batches=args.val_size,
+        logger=wandb_logger,
+        max_epochs=args.epochs,
+        callbacks=callbacks,
+    )
 
     # Start the training process
     trainer.fit(lit_model, data_module)
@@ -58,6 +71,8 @@ if __name__ == "__main__":
     parser.add_argument("--num_workers", type=int, default=8)
     parser.add_argument("--lazy_loading", type=bool, default=True)
     parser.add_argument("--crop_center", action="store_true")
+    parser.add_argument("--train_size", type=float, default=1, help="Fraction of the training set to use.")
+    parser.add_argument("--val_size", type=float, default=1, help="Fraction of the validation set to use.")
 
     # Model
     parser.add_argument("--model", type=str, default="simple_cnn")

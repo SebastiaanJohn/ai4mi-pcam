@@ -14,7 +14,7 @@ class PCAMLitModule(pl.LightningModule):
     """PyTorch Lightning module for PCAM dataset."""
 
     def __init__(
-        self, model: nn.Module, compile_model: bool, lr: float = 1e-3, lr_scheduler: str | None = None
+        self, model: nn.Module, compile_model: bool, lr: float = 1e-3, lr_scheduler: str | None = None,
     ) -> None:
         """PyTorch Lightning module constructor."""
         super().__init__()
@@ -47,8 +47,9 @@ class PCAMLitModule(pl.LightningModule):
 
         # Update logs and metrics
         self.train_acc(preds, targets)
-        self.log("train/loss", loss, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("train/loss", loss, on_step=True, on_epoch=True, prog_bar=True)
         self.log("train/acc", self.train_acc, on_step=True, on_epoch=True, prog_bar=True)
+        self.log("lr", self.trainer.optimizers[0].param_groups[0]["lr"], on_step=True, on_epoch=False, prog_bar=True)
 
         return loss
 
@@ -92,7 +93,7 @@ class PCAMLitModule(pl.LightningModule):
 
         if self.hparams.lr_scheduler == "step":
             scheduler = optim.lr_scheduler.StepLR(
-                optimizer, step_size=self.hparams.lr_decay_steps, gamma=self.hparams.lr_decay_rate
+                optimizer, step_size=self.hparams.lr_decay_steps, gamma=self.hparams.lr_decay_rate,
             )
         else:
             error_msg = "Invalid lr_scheduler type!"
