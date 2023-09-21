@@ -13,6 +13,5 @@ dependencies:
   - lightning
   - pip:
     - ruff
-    - lightning[pytorch-extra]"
-    - logeru
+    - loguru
     - wandb
