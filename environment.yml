@@ -9,9 +9,12 @@ dependencies:
   - pip>=23.2.1
   - pytorch-cuda>=11.8
   - pytorch>=2.0.0
+  - torchvision
   - numpy
   - lightning
   - pip:
     - ruff
     - loguru
     - wandb
+    - h5py
+    - Pillow

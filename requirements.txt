@@ -1,8 +1,10 @@
 pytorch-cuda>=11.8
 pytorch>=2.0.0
+torchvision
 numpy
 lightning
 ruff
-lightning[pytorch-extra]
-logeru
+loguru
 wandb
+h5py
+Pillow

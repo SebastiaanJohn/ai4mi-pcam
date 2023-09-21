@@ -5,7 +5,7 @@ from pathlib import Path
 
 import lightning.pytorch as pl
 import wandb
-from datasets.pcam import PCAMDataModule
+from datasets.PCAM import PCAMDataModule
 from loguru import logger
 from modules import PCAMLitModule
 from pytorch_lightning.loggers import WandbLogger
