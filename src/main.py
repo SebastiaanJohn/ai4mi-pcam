@@ -5,7 +5,7 @@ from pathlib import Path
 
 import lightning.pytorch as pl
 import wandb
-from datasets.PCAM import PCAMDataModule
+from datasets.pcam import PCAMDataModule
 from loguru import logger
 from modules import PCAMLitModule
 from pytorch_lightning.loggers import WandbLogger
@@ -17,23 +17,27 @@ def main(args) -> None:
     logger.info("Starting training process...")
 
     # Setup Weights & Biases
-    wandb_logger = (
-        WandbLogger(
-            project=args.wandb_project,
-            entity=args.wandb_entity,
-            save_dir=Path(__file__).resolve().parent.parent / args.wandb_dir,
+    if args.wandb and not args.dev_run:
+        wandb_logger = (
+            WandbLogger(
+                project=args.wandb_project,
+                entity=args.wandb_entity,
+                save_dir=Path(__file__).resolve().parent.parent / args.wandb_dir,
+            )
         )
-        if args.wandb
-        else None
-    )
-
-    wandb_logger.experiment.config["batch_size"] = args.batch_size
+        wandb_logger.experiment.config["batch_size"] = args.batch_size
+    else:
+        wandb_logger = None
 
     # Instantiate the data module
-    data_module = PCAMDataModule(data_dir=args.data_dir, lazy_loading=True)
+    data_module = PCAMDataModule(
+        data_dir=args.data_dir,
+        lazy_loading=args.lazy_loading,
+        crop_center=args.crop_center,
+    )
 
     # Instantiate the model
-    model = load_model(args.model)
+    model = load_model(args.model, input_size=32 if args.crop_center else 96)
     lit_model = PCAMLitModule(model=model, compile_model=args.compile_model)
 
     # Instantiate the trainer
@@ -53,16 +57,17 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--num_workers", type=int, default=8)
     parser.add_argument("--lazy_loading", type=bool, default=True)
+    parser.add_argument("--crop_center", action="store_true")
 
     # Model
     parser.add_argument("--model", type=str, default="simple_cnn")
-    parser.add_argument("--compile_model", type=bool, default=False)
+    parser.add_argument("--compile_model", action="store_true")
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--lr_scheduler", type=str, default=None)
 
     # Training
     parser.add_argument("--epochs", type=int, default=10)
-    parser.add_argument("--early_stopping", type=bool, default=False)
+    parser.add_argument("--early_stopping", action="store_true")
 
     # Logging
     parser.add_argument("--wandb", type=bool, default=True)
@@ -71,8 +76,8 @@ if __name__ == "__main__":
     parser.add_argument("--wandb_dir", type=str, default="experiments")
 
     # Debugging
-    parser.add_argument("--dev_run", type=bool, default=False, help="Whether to run a development run.")
-    parser.add_argument("--debug", type=bool, default=False, help="Whether to run in debug mode.")
+    parser.add_argument("--dev_run", action="store_true")
+    parser.add_argument("--debug", action="store_true")
 
     args = parser.parse_args()
 

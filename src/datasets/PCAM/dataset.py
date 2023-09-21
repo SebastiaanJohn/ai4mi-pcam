@@ -20,6 +20,7 @@ class PCAMDataset(Dataset):
         target_file_path: Path,
         transform: Callable | None = None,
         lazy_loading: bool = False,
+        crop_center: bool = False,
     ) -> None:
         """PCAM dataset constructor.
 
@@ -30,11 +31,14 @@ class PCAMDataset(Dataset):
             Defaults to None.
             lazy_loading (bool, optional): Whether to load the data lazily.
             Defaults to False.
+            crop_center (bool, optional): Whether to crop the center 32x32px region of the image.
+            Defaults to False.
         """
         self._data_file_path = data_file_path
         self._target_file_path = target_file_path
         self._transform = transform
         self._lazy_loading = lazy_loading
+        self._crop_center = crop_center
 
         with h5py.File(self._data_file_path, "r") as f:
             self._data_length = len(f["x"])
@@ -65,6 +69,10 @@ class PCAMDataset(Dataset):
         else:
             sample = Image.fromarray(self._data[idx])
             target = self._target[idx]
+
+        if self._crop_center:
+            # Crop the center 32x32px region
+            sample = sample.crop((16, 16, 48, 48))
 
         sample = self._transform(sample) if self._transform else transforms.ToTensor()(sample)
 

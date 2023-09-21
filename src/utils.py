@@ -5,11 +5,11 @@ from torch import nn
 from torchvision import models
 
 
-def load_model(model_name: str) -> nn.Module:
+def load_model(model_name: str, input_size: int) -> nn.Module:
     """Loads a model from the models module."""
     match model_name:
         case "simple_cnn":
-            return SimpleCNN()
+            return SimpleCNN(input_size=input_size)
         case "resnet50":
             model = models.resnet50()
 
