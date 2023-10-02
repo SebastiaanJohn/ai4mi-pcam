@@ -5,12 +5,12 @@ from pathlib import Path
 
 import lightning.pytorch as pl
 import wandb
-from datasets.pcam import PCAMDataModule
+from datasets.PCAM import PCAMDataModule
 from lightning.pytorch.callbacks.early_stopping import EarlyStopping
 from loguru import logger
-from modules import PCAMLitModule
 from pytorch_lightning.loggers import WandbLogger
-from utils import load_model
+from utils import PCAMLitModule
+from utils.helpers import load_model
 
 
 def main(args) -> None:
@@ -57,7 +57,10 @@ def main(args) -> None:
     )
 
     # Start the training process
-    trainer.fit(lit_model, data_module)
+    if args.test is not None:
+        trainer.test(lit_model, ckpt_path="/home/user/ai4mi-pcam/experiments/pcam-classification/nogpcqwm/checkpoints/epoch=6-step=57344.ckpt")
+    else:
+        trainer.fit(lit_model, data_module)
 
     wandb.finish()
 
@@ -78,6 +81,7 @@ if __name__ == "__main__":
     parser.add_argument("--compile_model", action="store_true")
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--lr_scheduler", type=str, default=None)
+    parser.add_argument("--test", action="store_true", help="Test the best model.")
 
     # Training
     parser.add_argument("--epochs", type=int, default=10)

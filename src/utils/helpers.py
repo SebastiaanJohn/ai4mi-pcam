@@ -1,6 +1,5 @@
 """Utility functions for the project."""
 
-from modules.models import SimpleCNN
 from torch import nn
 from torchvision import models
 
@@ -10,8 +9,6 @@ NUM_CLASSES = 2
 def load_model(model_name: str, input_size: int) -> nn.Module:
     """Loads a model from the models module."""
     match model_name:
-        case "simple_cnn":
-            return SimpleCNN(input_size=input_size)
         case "resnet50":
             model = models.resnet50()
 
