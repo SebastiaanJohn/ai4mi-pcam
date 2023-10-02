@@ -49,8 +49,8 @@ def main(args) -> None:
     # Instantiate the trainer
     trainer = pl.Trainer(
         fast_dev_run=args.dev_run,
-        limit_train_batches=args.train_size,
-        limit_val_batches=args.val_size,
+        limit_train_batches=args.train_size if args.train_size else None,
+        limit_val_batches=args.val_size if args.val_size else None,
         logger=wandb_logger,
         max_epochs=args.epochs,
         callbacks=callbacks,
@@ -61,7 +61,6 @@ def main(args) -> None:
 
     wandb.finish()
 
-
 if __name__ == "__main__":
     parser = ArgumentParser()
 
@@ -71,8 +70,8 @@ if __name__ == "__main__":
     parser.add_argument("--num_workers", type=int, default=8)
     parser.add_argument("--lazy_loading", type=bool, default=True)
     parser.add_argument("--crop_center", action="store_true")
-    parser.add_argument("--train_size", type=float, default=1, help="Fraction of the training set to use.")
-    parser.add_argument("--val_size", type=float, default=1, help="Fraction of the validation set to use.")
+    parser.add_argument("--train_size", type=float, default=None, help="Fraction of the training set to use.")
+    parser.add_argument("--val_size", type=float, default=None, help="Fraction of the validation set to use.")
 
     # Model
     parser.add_argument("--model", type=str, default="simple_cnn")
@@ -85,7 +84,7 @@ if __name__ == "__main__":
     parser.add_argument("--early_stopping", action="store_true")
 
     # Logging
-    parser.add_argument("--wandb", type=bool, default=True)
+    parser.add_argument("--wandb", type=bool, default=False)
     parser.add_argument("--wandb_project", type=str, default="pcam-classification")
     parser.add_argument("--wandb_entity", type=str, default="ai4mi")
     parser.add_argument("--wandb_dir", type=str, default="experiments")

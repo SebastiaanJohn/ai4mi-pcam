@@ -7,7 +7,7 @@ import lightning.pytorch as pl
 import torch
 from PIL.Image import Image
 from torch import nn, optim
-from torchmetrics import Accuracy
+from torchmetrics import AUROC, Accuracy
 
 
 class PCAMLitModule(pl.LightningModule):
@@ -29,6 +29,10 @@ class PCAMLitModule(pl.LightningModule):
         self.val_acc = Accuracy(task="binary", num_classes=2)
         self.test_acc = Accuracy(task="binary", num_classes=2)
 
+        self.train_auc = AUROC(task="binary")
+        self.val_auc = AUROC(task="binary")
+        self.test_auc = AUROC(task="binary")
+
     def _model_step(self, batch: tuple[Image, torch.Tensor]) -> float:
         """Performs a single step on a batch of data."""
         img, target = batch
@@ -47,8 +51,11 @@ class PCAMLitModule(pl.LightningModule):
 
         # Update logs and metrics
         self.train_acc(preds, targets)
+        self.train_auc(preds, targets)
+
         self.log("train/loss", loss, on_step=True, on_epoch=True, prog_bar=True)
         self.log("train/acc", self.train_acc, on_step=True, on_epoch=True, prog_bar=True)
+        self.log("train/auc", self.train_auc, on_step=True, on_epoch=True, prog_bar=True)
         self.log("lr", self.trainer.optimizers[0].param_groups[0]["lr"], on_step=True, on_epoch=False, prog_bar=True)
 
         return loss
@@ -59,8 +66,10 @@ class PCAMLitModule(pl.LightningModule):
 
         # Update logs and metrics
         self.val_acc(preds, targets)
+        self.val_auc(preds, targets)
         self.log("val/loss", loss, on_step=False, on_epoch=True, prog_bar=True)
         self.log("val/acc", self.val_acc, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("val/auc", self.val_auc, on_step=False, on_epoch=True, prog_bar=True)
 
     def on_validation_epoch_end(self) -> None:
         """Log the current learning rate at the end of the validation epoch."""
@@ -72,8 +81,11 @@ class PCAMLitModule(pl.LightningModule):
 
         # Update logs and metrics
         self.test_acc(preds, targets)
+        self.test_auc(preds, targets)
+
         self.log("test/loss", loss, on_step=False, on_epoch=True, prog_bar=True)
         self.log("test/acc", self.test_acc, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("test/auc", self.test_auc, on_step=False, on_epoch=True, prog_bar=True)
 
     def setup(self, stage: str) -> None:
         """Compile the model if needed."""
