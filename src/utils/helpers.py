@@ -4,44 +4,36 @@ from torch import nn
 from torchvision import models
 
 
-NUM_CLASSES = 2
-
-def load_model(model_name: str, input_size: int) -> nn.Module:
+class ModelLoader:
     """Loads a model from the models module."""
-    match model_name:
-        case "resnet50":
-            model = models.resnet50()
 
-            # Replace the last layer
-            num_features = model.fc.in_features
-            model.fc = nn.Linear(num_features, NUM_CLASSES)
+    def __init__(self, num_classes: int = 2) -> None:
+        """Initializes the ModelLoader class."""
+        self.num_classes = num_classes
 
-            return model
-        case "resnet18":
-            model = models.resnet18(weights="DEFAULT")
+    @classmethod
+    def load_resnet34(cls) -> nn.Module:
+        """Loads a ResNet34 model."""
+        model = models.resnet34()
+        num_features = model.fc.in_features
+        model.fc = nn.Linear(num_features, cls.num_classes)
+        return model
 
-            # Freeze all layers
-            for param in model.parameters():
-                param.requires_grad = False
+    @staticmethod
+    def load_resnet18(cls) -> nn.Module:
+        """Loads a ResNet18 model."""
+        model = models.resnet18()
+        num_features = model.fc.in_features
+        model.fc = nn.Linear(num_features, cls.num_classes)
+        return model
 
-            # Replace the last layer
-            num_features = model.fc.in_features
-            model.fc = nn.Linear(num_features, NUM_CLASSES)
+    # Add more methods for other models...
 
-            return model
-
-        case "resnet34":
-            model = models.resnet34(weights="DEFAULT")
-
-            # Freeze all layers
-            for param in model.parameters():
-                param.requires_grad = False
-
-            # Replace the last layer
-            num_features = model.fc.in_features
-            model.fc = nn.Linear(num_features, NUM_CLASSES)
-
-            return model
-        case _:
-            error_msg = f"Model {model_name} not supported."
-            raise ValueError(error_msg)
+    @classmethod
+    def load_model(cls, model_name: str) -> nn.Module:
+        """Loads a model from the models module."""
+        model_loader_method = getattr(cls, f"load_{model_name}", None)
+        if model_loader_method and callable(model_loader_method):
+            return model_loader_method()
+        error_msg = f"Model {model_name} not supported."
+        raise ValueError(error_msg)

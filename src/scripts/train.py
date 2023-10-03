@@ -11,8 +11,8 @@ from loguru import logger
 from pytorch_lightning.loggers import WandbLogger
 
 from src.datasets.PCAM import PCAMDataModule
-from src.engines.system import PCAMLitModule
-from src.utils.helpers import load_model
+from src.engines.system import PCAMSystem
+from src.utils.helpers import ModelLoader
 
 
 def main(args) -> None:
@@ -40,8 +40,8 @@ def main(args) -> None:
     )
 
     # Instantiate the model
-    model = load_model(args.model, input_size=32 if args.crop_center else 96)
-    lit_model = PCAMLitModule(model=model, compile_model=args.compile_model)
+    model = ModelLoader.load_model(args.model)
+    system = PCAMSystem(model=model, compile_model=args.compile_model)
 
     callbacks = []
     if args.early_stopping:
@@ -60,9 +60,9 @@ def main(args) -> None:
 
     # Start the training process
     if args.test is not None:
-        trainer.test(lit_model, ckpt_path="fix this")
+        trainer.test(system, ckpt_path="fix this")
     else:
-        trainer.fit(lit_model, data_module)
+        trainer.fit(system, data_module)
 
     wandb.finish()
 
