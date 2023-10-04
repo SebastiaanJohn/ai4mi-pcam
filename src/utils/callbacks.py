@@ -19,7 +19,7 @@ class Callbacks:
     def add_checkpoint_callback(self, model_name: str, version: str) -> None:
         """Adds a checkpoint callback."""
         checkpoint_callback = ModelCheckpoint(
-            dirpath=settings.experiments_dir / model_name / f"version_{version}",
+            dirpath=settings.experiments_dir / model_name / f"version_{version}" / "checkpoints",
             save_last=True,
             save_top_k=1,
             filename="best-loss-model-{epoch:02d}-{val_loss:.2f}",
@@ -32,12 +32,6 @@ class Callbacks:
     def add_early_stopping_callback(self) -> None:
         """Adds an early stopping callback."""
         self.callbacks.append(EarlyStopping(monitor="val_loss", mode="min", patience=5, verbose=True))
-
-    def add_all_callbacks(self) -> None:
-        """Adds all the available callbacks."""
-        self.add_tqdm_callback()
-        self.add_checkpoint_callback()
-        self.add_early_stopping_callback()
 
     def get_callbacks(self) -> list:
         """Returns the list of callbacks."""

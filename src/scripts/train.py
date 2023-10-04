@@ -20,7 +20,7 @@ def train(args) -> None:
     logger.info("Starting training process...")
 
     # Setup Weights & Biases
-    if args.wandb and not args.dev_run:
+    if args.wandb:
         pl_logger = WandbLogger(
             save_dir=settings.root_dir,
             name=f"{settings.experiments_dir.name}/{args.model}",
@@ -49,7 +49,7 @@ def train(args) -> None:
     # Instantiate the model
     model_loader = ModelLoader()
     model = model_loader.load_model(args.model)
-    system = PCAMSystem(model=model, compile_model=args.compile_model)
+    system = PCAMSystem(model=model, compile_model=args.compile_model, lr=args.lr)
 
     # Instantiate the trainer
     trainer = pl.Trainer(
@@ -65,7 +65,8 @@ def train(args) -> None:
     # Start the training process
     trainer.fit(model=system, datamodule=data_module)
 
-    wandb.finish()
+    if args.wandb:
+        wandb.finish()
 
 if __name__ == "__main__":
     parser = ArgumentParser()
