@@ -58,9 +58,9 @@ class PCAMSystem(pl.LightningModule):
         self.train_acc(preds, targets)
         self.train_auc(preds, targets)
 
-        self.log("train/loss", loss, on_step=True, on_epoch=True, prog_bar=True)
-        self.log("train/acc", self.train_acc, on_step=True, on_epoch=True, prog_bar=True)
-        self.log("train/auc", self.train_auc, on_step=True, on_epoch=True, prog_bar=True)
+        self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
+        self.log("train_acc", self.train_acc, on_step=True, on_epoch=True, prog_bar=True)
+        self.log("train_auc", self.train_auc, on_step=True, on_epoch=True, prog_bar=True)
         self.log("lr", self.trainer.optimizers[0].param_groups[0]["lr"], on_step=True, on_epoch=False)
 
         return loss
@@ -73,16 +73,16 @@ class PCAMSystem(pl.LightningModule):
         self.val_acc(preds, targets)
         self.val_auc(preds, targets)
 
-        self.log("val/loss", loss, on_step=False, on_epoch=True, prog_bar=True)
-        self.log("val/acc", self.val_acc, on_step=False, on_epoch=True, prog_bar=True)
-        self.log("val/auc", self.val_auc, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("val_loss", loss, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("val_acc", self.val_acc, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("val_auc", self.val_auc, on_step=False, on_epoch=True, prog_bar=True)
 
     def on_validation_epoch_end(self) -> None:
         """Log the current learning rate at the end of the validation epoch."""
         self.best_acc = max(self.val_acc.compute(), self.best_acc if hasattr(self, "best_acc") else 0)
         self.best_auc = max(self.val_auc.compute(), self.best_auc if hasattr(self, "best_auc") else 0)
-        self.log("val/best_acc", self.best_acc, on_step=False, on_epoch=True, prog_bar=True)
-        self.log("val/best_auc", self.best_auc, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("val_best_acc", self.best_acc, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("val_best_auc", self.best_auc, on_step=False, on_epoch=True, prog_bar=True)
 
     def test_step(self, batch: tuple[torch.Tensor, torch.Tensor], batch_idx: int) -> None:
         """Return the loss for a test step."""
@@ -92,9 +92,9 @@ class PCAMSystem(pl.LightningModule):
         self.test_acc(preds, targets)
         self.test_auc(preds, targets)
 
-        self.log("test/loss", loss, on_step=False, on_epoch=True, prog_bar=True)
-        self.log("test/acc", self.test_acc, on_step=False, on_epoch=True, prog_bar=True)
-        self.log("test/auc", self.test_auc, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("test_loss", loss, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("test_acc", self.test_acc, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("test_auc", self.test_auc, on_step=False, on_epoch=True, prog_bar=True)
 
     def setup(self, stage: str) -> None:
         """Compile the model if needed."""

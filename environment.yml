@@ -12,6 +12,8 @@ dependencies:
   - torchvision
   - numpy
   - lightning
+  - pydantic
+  - pydantic-settings
   - pip:
     - ruff
     - loguru

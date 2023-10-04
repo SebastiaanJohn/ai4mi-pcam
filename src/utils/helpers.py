@@ -11,28 +11,25 @@ class ModelLoader:
         """Initializes the ModelLoader class."""
         self.num_classes = num_classes
 
-    @classmethod
-    def load_resnet34(cls) -> nn.Module:
+    def load_resnet34(self) -> nn.Module:
         """Loads a ResNet34 model."""
         model = models.resnet34()
         num_features = model.fc.in_features
-        model.fc = nn.Linear(num_features, cls.num_classes)
+        model.fc = nn.Linear(num_features, self.num_classes)
         return model
 
-    @staticmethod
-    def load_resnet18(cls) -> nn.Module:
+    def load_resnet18(self) -> nn.Module:
         """Loads a ResNet18 model."""
         model = models.resnet18()
         num_features = model.fc.in_features
-        model.fc = nn.Linear(num_features, cls.num_classes)
+        model.fc = nn.Linear(num_features, self.num_classes)
         return model
 
     # Add more methods for other models...
 
-    @classmethod
-    def load_model(cls, model_name: str) -> nn.Module:
+    def load_model(self, model_name: str) -> nn.Module:
         """Loads a model from the models module."""
-        model_loader_method = getattr(cls, f"load_{model_name}", None)
+        model_loader_method = getattr(self, f"load_{model_name}", None)
         if model_loader_method and callable(model_loader_method):
             return model_loader_method()
         error_msg = f"Model {model_name} not supported."

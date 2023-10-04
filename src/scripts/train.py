@@ -2,67 +2,68 @@
 
 import sys
 from argparse import ArgumentParser
-from pathlib import Path
 
 import lightning.pytorch as pl
 import wandb
-from lightning.pytorch.callbacks.early_stopping import EarlyStopping
+from lightning.pytorch.loggers import TensorBoardLogger, WandbLogger
 from loguru import logger
-from pytorch_lightning.loggers import WandbLogger
 
+from src.config import settings
 from src.datasets.PCAM import PCAMDataModule
 from src.engines.system import PCAMSystem
+from src.utils.callbacks import Callbacks
 from src.utils.helpers import ModelLoader
 
 
-def main(args) -> None:
+def train(args) -> None:
     """Main training routine specific for this project."""
     logger.info("Starting training process...")
 
     # Setup Weights & Biases
     if args.wandb and not args.dev_run:
-        wandb_logger = (
-            WandbLogger(
-                project=args.wandb_project,
-                entity=args.wandb_entity,
-                save_dir=Path(__file__).resolve().parent.parent / args.wandb_dir,
-            )
+        pl_logger = WandbLogger(
+            save_dir=settings.root_dir,
+            name=f"{settings.experiments_dir.name}/{args.model}",
+            project=settings.wandb_project,
+            entity=settings.wandb_entity,
         )
-        wandb_logger.experiment.config["batch_size"] = args.batch_size
     else:
-        wandb_logger = None
+        pl_logger = TensorBoardLogger(
+            save_dir=settings.root_dir,
+            name=f"{settings.experiments_dir.name}/{args.model}",
+        )
+
+    # Load the callbacks
+    callbacks = Callbacks()
+    callbacks.add_tqdm_callback()
+    callbacks.add_checkpoint_callback(args.model, pl_logger.version)
+    callbacks.add_early_stopping_callback()
 
     # Instantiate the data module
     data_module = PCAMDataModule(
-        data_dir=args.data_dir,
+        data_dir=settings.raw_data_dir,
         lazy_loading=args.lazy_loading,
         crop_center=args.crop_center,
     )
 
     # Instantiate the model
-    model = ModelLoader.load_model(args.model)
+    model_loader = ModelLoader()
+    model = model_loader.load_model(args.model)
     system = PCAMSystem(model=model, compile_model=args.compile_model)
-
-    callbacks = []
-    if args.early_stopping:
-        early_stopping = EarlyStopping(monitor="val/loss", mode="min")
-        callbacks.append(early_stopping)
 
     # Instantiate the trainer
     trainer = pl.Trainer(
+        default_root_dir=settings.experiments_dir,
         fast_dev_run=args.dev_run,
         limit_train_batches=args.train_size if args.train_size else None,
         limit_val_batches=args.val_size if args.val_size else None,
-        logger=wandb_logger,
+        logger=pl_logger,
         max_epochs=args.epochs,
-        callbacks=callbacks,
+        callbacks=callbacks.get_callbacks(),
     )
 
     # Start the training process
-    if args.test is not None:
-        trainer.test(system, ckpt_path="fix this")
-    else:
-        trainer.fit(system, data_module)
+    trainer.fit(model=system, datamodule=data_module)
 
     wandb.finish()
 
@@ -70,7 +71,6 @@ if __name__ == "__main__":
     parser = ArgumentParser()
 
     # Dataset
-    parser.add_argument("--data_dir", type=Path, default=Path("data/raw"))
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--num_workers", type=int, default=8)
     parser.add_argument("--lazy_loading", type=bool, default=True)
@@ -82,8 +82,6 @@ if __name__ == "__main__":
     parser.add_argument("--model", type=str, default="simple_cnn")
     parser.add_argument("--compile_model", action="store_true")
     parser.add_argument("--lr", type=float, default=1e-3)
-    parser.add_argument("--lr_scheduler", type=str, default=None)
-    parser.add_argument("--test", action="store_true", help="Test the best model.")
 
     # Training
     parser.add_argument("--epochs", type=int, default=10)
@@ -91,9 +89,6 @@ if __name__ == "__main__":
 
     # Logging
     parser.add_argument("--wandb", type=bool, default=False)
-    parser.add_argument("--wandb_project", type=str, default="pcam-classification")
-    parser.add_argument("--wandb_entity", type=str, default="ai4mi")
-    parser.add_argument("--wandb_dir", type=str, default="experiments")
 
     # Debugging
     parser.add_argument("--dev_run", action="store_true")
@@ -113,4 +108,4 @@ if __name__ == "__main__":
         ),
     )
 
-    main(args)
+    train(args)

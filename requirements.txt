@@ -8,3 +8,5 @@ loguru
 wandb
 h5py
 Pillow
+pydantic
+pydantic-settings
