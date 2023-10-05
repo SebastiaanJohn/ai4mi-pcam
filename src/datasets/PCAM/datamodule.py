@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import lightning.pytorch as pl
+from lightning.pytorch.utilities.types import EVAL_DATALOADERS
 from torch.utils.data import DataLoader
 
 from .dataset import PCAMDataset
@@ -48,7 +49,7 @@ class PCAMDataModule(pl.LightningDataModule):
                 crop_center=self._crop_center,
             )
 
-        if stage == "test":
+        if stage in {"test", "predict"}:
             self._test_dataset = PCAMDataset(
                 data_file_path=self._data_dir / "camelyonpatch_level_2_split_test_x.h5",
                 target_file_path=self._data_dir / "camelyonpatch_level_2_split_test_y.h5",
@@ -72,4 +73,8 @@ class PCAMDataModule(pl.LightningDataModule):
         return DataLoader(
             self._test_dataset, batch_size=self._batch_size, shuffle=False, num_workers=self._num_workers,
         )
+
+    def predict_dataloader(self) -> EVAL_DATALOADERS:
+        """Return the prediction dataloader."""
+        return self.test_dataloader()
 

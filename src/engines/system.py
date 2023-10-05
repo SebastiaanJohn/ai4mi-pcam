@@ -5,6 +5,7 @@ from typing import Any
 
 import lightning.pytorch as pl
 import torch
+import torch.nn.functional as F
 from torch import nn, optim
 from torchmetrics import AUROC, Accuracy
 
@@ -95,6 +96,18 @@ class PCAMSystem(pl.LightningModule):
         self.log("test_loss", loss, on_step=False, on_epoch=True, prog_bar=True)
         self.log("test_acc", self.test_acc, on_step=False, on_epoch=True, prog_bar=True)
         self.log("test_auc", self.test_auc, on_step=False, on_epoch=True, prog_bar=True)
+
+    def predict_step(
+        self,
+        batch: tuple[torch.Tensor, torch.Tensor],
+        batch_idx: int,
+        dataloader_idx: int = 0,
+    ) -> torch.Tensor:
+        """Return the predictions for a batch."""
+        img, _ = batch
+        logits = self(img)
+
+        return F.sigmoid(logits)
 
     def setup(self, stage: str) -> None:
         """Compile the model if needed."""

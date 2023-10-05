@@ -49,7 +49,6 @@ def test(args) -> None:
 
     # Start the testing process
     trainer.test(model=system, datamodule=data_module)
-    # _ = trainer.predict(data_module)
 
 
 if __name__ == "__main__":
