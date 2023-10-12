@@ -22,13 +22,14 @@ class PCAMSystem(pl.LightningModule):
         optimizer_name: str,
         optimizer_hparams: dict[str, Any],
         compile_model: bool = False,
+        freeze: bool = False,
     ) -> None:
         """PyTorch Lightning module constructor."""
         super().__init__()
         self.save_hyperparameters()
 
         # Model
-        self.model = create_model(model_name, model_hparams)
+        self.model = create_model(model_name, model_hparams, freeze)
         self.compile_model = compile_model
 
         # Loss
@@ -38,18 +39,20 @@ class PCAMSystem(pl.LightningModule):
         self.train_acc = Accuracy(task="binary")
         self.val_acc = Accuracy(task="binary")
         self.test_acc = Accuracy(task="binary")
+
         self.train_auc = AUROC(task="binary")
         self.val_auc = AUROC(task="binary")
         self.test_auc = AUROC(task="binary")
+
         self.best_acc = 0
         self.best_auc = 0
 
     def model_step(self, batch: tuple[torch.Tensor, torch.Tensor]) -> tuple[float, torch.Tensor, torch.Tensor]:
         """Performs a single step on a batch of data."""
         img, targets = batch
+        targets = targets.view(-1, 1).float()
         logits = self(img)
-        logits = logits.squeeze(1)
-        loss = self.criterion(logits, targets.float())
+        loss = self.criterion(logits, targets)
 
         return loss, logits, targets
 

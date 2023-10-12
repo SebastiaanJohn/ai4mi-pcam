@@ -13,10 +13,14 @@ MODEL_DICT = {
     "densenet": get_densenet,
 }
 
-def create_model(model_name: str, model_hparams: dict[str, Any]) -> nn.Module:
+def create_model(
+    model_name: str,
+    model_hparams: dict[str, Any],
+    freeze: bool = False,
+) -> nn.Module:
     """Creates a model from a given model name and model hyperparameters."""
     model_type, version = model_name.split("_")
     if model_type in MODEL_DICT:
-        return MODEL_DICT[model_type](version=version, **model_hparams)
+        return MODEL_DICT[model_type](version=version, freeze=freeze, **model_hparams)
     error_msg = f"Model {model_name} not supported."
     raise ValueError(error_msg)

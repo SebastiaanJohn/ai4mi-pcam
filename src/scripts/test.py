@@ -70,6 +70,7 @@ if __name__ == "__main__":
 
     # Debugging
     parser.add_argument("--debug", action="store_true")
+    parser.add_argument("--dev_run", action="store_true")
 
     args = parser.parse_args()
 

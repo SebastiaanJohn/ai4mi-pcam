@@ -4,8 +4,8 @@ import torch.nn as nn
 from torchvision import models
 
 
-def get_resnet(version: str, num_classes: int = 2, freeze: bool = False) -> nn.Module:
-    """Returns a ResNet50 model with a custom classifier."""
+def get_resnet(version: str, freeze: bool = False, num_classes: int = 2) -> nn.Module:
+    """Returns a ResNet model with a custom classifier."""
     model = getattr(models, f"resnet{version}")()
 
     if freeze:

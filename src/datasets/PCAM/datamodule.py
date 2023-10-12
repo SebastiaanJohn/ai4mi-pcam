@@ -70,7 +70,9 @@ class PCAMDataModule(pl.LightningDataModule):
 
     def val_dataloader(self) -> DataLoader:
         """Return the validation dataloader."""
-        return DataLoader(self._val_dataset, batch_size=self._batch_size, shuffle=False, num_workers=self._num_workers)
+        return DataLoader(
+            self._val_dataset, batch_size=self._batch_size, shuffle=False, num_workers=self._num_workers,
+        )
 
     def test_dataloader(self) -> DataLoader:
         """Return the test dataloader."""

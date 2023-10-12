@@ -46,11 +46,11 @@ class PCAMDataset(Dataset):
                 self._data = f["x"][:]
 
         with h5py.File(self._target_file_path, "r") as f:
-            _target_length = len(f["y"])
+            target_length = len(f["y"])
             if not self._lazy_loading:
                 self._target = torch.tensor(f["y"][:], dtype=torch.long).squeeze()
 
-        if self._data_length != _target_length:
+        if self._data_length != target_length:
             msg = "Mismatch between data and target lengths."
             raise ValueError(msg)
 

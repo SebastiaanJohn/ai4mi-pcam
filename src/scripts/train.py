@@ -55,7 +55,14 @@ def train(args) -> None:
     }
 
     # Instantiate the model
-    system = PCAMSystem(args.model, model_hparams, args.optimizer, optimizer_hparams, args.compile_model)
+    system = PCAMSystem(
+        model_name=args.model,
+        model_hparams=model_hparams,
+        optimizer_name=args.optimizer,
+        optimizer_hparams=optimizer_hparams,
+        compile_model=args.compile_model,
+        freeze=args.freeze,
+    )
 
     # Instantiate the trainer
     trainer = pl.Trainer(
@@ -86,10 +93,11 @@ if __name__ == "__main__":
     parser.add_argument("--val_size", type=float, default=None, help="Fraction of the validation set to use.")
 
     # Model
-    parser.add_argument("--model", type=str, default="simple_cnn")
+    parser.add_argument("--model", type=str, default="resnet_34")
     parser.add_argument("--compile_model", action="store_true")
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--weight_decay", type=float, default=1e-4)
+    parser.add_argument("--freeze", action="store_true")
 
     # Training
     parser.add_argument("--epochs", type=int, default=10)
