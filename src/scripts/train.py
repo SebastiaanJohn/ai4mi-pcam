@@ -12,7 +12,6 @@ from src.config import settings
 from src.datasets.PCAM import PCAMDataModule
 from src.engines.system import PCAMSystem
 from src.utils.callbacks import Callbacks
-from src.utils.helpers import ModelLoader
 
 
 def train(args) -> None:
@@ -46,10 +45,17 @@ def train(args) -> None:
         crop_center=args.crop_center,
     )
 
+    # Parameters
+    model_hparams = {
+        "num_classes": data_module.num_classes,
+    }
+    optimizer_hparams = {
+        "lr": args.lr,
+        "weight_decay": args.weight_decay,
+    }
+
     # Instantiate the model
-    model_loader = ModelLoader()
-    model = model_loader.load_model(args.model)
-    system = PCAMSystem(model=model, compile_model=args.compile_model, lr=args.lr)
+    system = PCAMSystem(args.model, model_hparams, args.optimizer, optimizer_hparams, args.compile_model)
 
     # Instantiate the trainer
     trainer = pl.Trainer(
@@ -83,13 +89,15 @@ if __name__ == "__main__":
     parser.add_argument("--model", type=str, default="simple_cnn")
     parser.add_argument("--compile_model", action="store_true")
     parser.add_argument("--lr", type=float, default=1e-3)
+    parser.add_argument("--weight_decay", type=float, default=1e-4)
 
     # Training
     parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--early_stopping", action="store_true")
+    parser.add_argument("--optimizer", type=str, default="Adam")
 
     # Logging
-    parser.add_argument("--wandb", type=bool, default=False)
+    parser.add_argument("--wandb", action="store_true")
 
     # Debugging
     parser.add_argument("--dev_run", action="store_true")

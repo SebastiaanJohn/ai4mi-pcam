@@ -28,8 +28,12 @@ class PCAMDataModule(pl.LightningDataModule):
         self._lazy_loading = lazy_loading
         self._transform = None
         self._crop_center = crop_center
+        self._num_classes = 1
 
-        self.num_classes = 2
+    @property
+    def num_classes(self) -> int:
+        """Return the number of classes."""
+        return self._num_classes
 
     def setup(self, stage: str) -> None:
         """Set up the data."""

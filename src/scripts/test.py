@@ -11,7 +11,7 @@ from src.config import settings
 from src.datasets.PCAM import PCAMDataModule
 from src.engines.system import PCAMSystem
 from src.utils.callbacks import Callbacks
-from src.utils.helpers import load_model_at_version
+from src.utils.helpers import get_model_at_version
 
 
 def test(args) -> None:
@@ -37,8 +37,8 @@ def test(args) -> None:
     )
 
     # Instantiate the model
-    model = load_model_at_version(model_name=args.model, version=args.version)
-    system = PCAMSystem(model=model, compile_model=False)
+    checkpoint_path = get_model_at_version(args.model, args.version)
+    system = PCAMSystem.load_from_checkpoint(checkpoint_path)
 
     # Instantiate the trainer
     trainer = pl.Trainer(
@@ -56,7 +56,7 @@ if __name__ == "__main__":
 
     # Required
     parser.add_argument("--model", type=str, required=True)
-    parser.add_argument("--version", type=int, required=True)
+    parser.add_argument("--version", type=str, required=True)
 
     # Dataset
     parser.add_argument("--batch_size", type=int, default=64)

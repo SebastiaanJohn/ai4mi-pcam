@@ -5,30 +5,34 @@ from typing import Any
 
 import lightning.pytorch as pl
 import torch
-import torch.nn.functional as F
+import torch.nn.functional as F  # noqa: N812
 from torch import nn, optim
 from torchmetrics import AUROC, Accuracy
+
+from src.models import create_model
 
 
 class PCAMSystem(pl.LightningModule):
     """PyTorch Lightning module for the PCAM dataset."""
 
     def __init__(
-        self, model: nn.Module, compile_model: bool, lr: float = 1e-3,
+        self,
+        model_name: str,
+        model_hparams: dict[str, Any],
+        optimizer_name: str,
+        optimizer_hparams: dict[str, Any],
+        compile_model: bool = False,
     ) -> None:
         """PyTorch Lightning module constructor."""
         super().__init__()
-        self.save_hyperparameters(ignore=["model"])
+        self.save_hyperparameters()
 
         # Model
-        self.model = model
+        self.model = create_model(model_name, model_hparams)
         self.compile_model = compile_model
 
-        # Hyperparameters
-        self.lr = lr
-
         # Loss
-        self.criterion = nn.CrossEntropyLoss()
+        self.criterion = nn.BCEWithLogitsLoss()
 
         # Metrics
         self.train_acc = Accuracy(task="binary")
@@ -37,15 +41,17 @@ class PCAMSystem(pl.LightningModule):
         self.train_auc = AUROC(task="binary")
         self.val_auc = AUROC(task="binary")
         self.test_auc = AUROC(task="binary")
+        self.best_acc = 0
+        self.best_auc = 0
 
-    def _model_step(self, batch: tuple[torch.Tensor, torch.Tensor]) -> tuple[float, torch.Tensor, torch.Tensor]:
+    def model_step(self, batch: tuple[torch.Tensor, torch.Tensor]) -> tuple[float, torch.Tensor, torch.Tensor]:
         """Performs a single step on a batch of data."""
-        img, target = batch
+        img, targets = batch
         logits = self(img)
-        loss = self.criterion(logits, target)
-        preds = torch.argmax(logits, dim = 1)
+        logits = logits.squeeze(1)
+        loss = self.criterion(logits, targets.float())
 
-        return loss, preds, target
+        return loss, logits, targets
 
     def forward(self, img: torch.Tensor) -> torch.Tensor:
         """Forward pass of the model."""
@@ -53,14 +59,14 @@ class PCAMSystem(pl.LightningModule):
 
     def training_step(self, batch: tuple[torch.Tensor, torch.Tensor], batch_idx: int) -> float:
         """Return the loss for a training step."""
-        loss, preds, targets = self._model_step(batch)
+        loss, preds, targets = self.model_step(batch)
 
         # Update logs and metrics
         self.train_acc(preds, targets)
         self.train_auc(preds, targets)
 
         self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
-        self.log("train_acc", self.train_acc, on_step=True, on_epoch=True, prog_bar=True)
+        self.log("train_acc", self.train_acc, on_step=True, on_epoch=False, prog_bar=True)
         self.log("train_auc", self.train_auc, on_step=True, on_epoch=True, prog_bar=True)
         self.log("lr", self.trainer.optimizers[0].param_groups[0]["lr"], on_step=True, on_epoch=False)
 
@@ -68,7 +74,7 @@ class PCAMSystem(pl.LightningModule):
 
     def validation_step(self, batch: tuple[torch.Tensor, torch.Tensor], batch_idx: int) -> None:
         """Return the loss for a validation step."""
-        loss, preds, targets = self._model_step(batch)
+        loss, preds, targets = self.model_step(batch)
 
         # Update logs and metrics
         self.val_acc(preds, targets)
@@ -87,7 +93,7 @@ class PCAMSystem(pl.LightningModule):
 
     def test_step(self, batch: tuple[torch.Tensor, torch.Tensor], batch_idx: int) -> None:
         """Return the loss for a test step."""
-        loss, preds, targets = self._model_step(batch)
+        loss, preds, targets = self.model_step(batch)
 
         # Update logs and metrics
         self.test_acc(preds, targets)
@@ -115,10 +121,22 @@ class PCAMSystem(pl.LightningModule):
             self.model = torch.compile(self.model)
 
     def configure_optimizers(self) -> dict[str, Any]:
-        """Configure the optimizer."""
-        return optim.Adam(
-            self.parameters(),
-            lr=self.hparams.lr,
-            weight_decay=self.hparams.weight_decay if hasattr(self.hparams, "weight_decay") else 0,
-        )
+        """Configure the optimizer and the learning rate scheduler."""
+        if self.hparams.optimizer_name == "Adam":
+            optimizer = optim.AdamW(self.parameters(), **self.hparams.optimizer_hparams)
+        elif self.hparams.optimizer_name == "SGD":
+            optimizer = optim.SGD(self.parameters(), **self.hparams.optimizer_hparams)
+        else:
+            error_msg = f'Unknown optimizer: "{self.hparams.optimizer_name}"'
+            raise AssertionError(error_msg)
+
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="max", factor=0.1, patience=2, verbose=True)
+
+        return {
+            "optimizer": optimizer,
+            "lr_scheduler": {
+                "scheduler": scheduler,
+                "monitor": "val_auc",
+            },
+        }
 
