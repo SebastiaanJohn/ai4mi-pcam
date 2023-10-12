@@ -50,8 +50,8 @@ class PCAMSystem(pl.LightningModule):
     def model_step(self, batch: tuple[torch.Tensor, torch.Tensor]) -> tuple[float, torch.Tensor, torch.Tensor]:
         """Performs a single step on a batch of data."""
         img, targets = batch
-        targets = targets.view(-1, 1).float()
-        logits = self(img)
+        targets = targets.float()
+        logits = self(img).squeeze(1)
         loss = self.criterion(logits, targets)
 
         return loss, logits, targets
