@@ -61,6 +61,9 @@ class ModelLoader:
     def load_resnet34(self) -> nn.Module:
         """Loads a ResNet34 model."""
         model = models.resnet34()
+        for param in model.parameters():
+            param.requires_grad = False
+
         num_features = model.fc.in_features
         model.fc = nn.Linear(num_features, self.num_classes)
         return model
@@ -68,8 +71,21 @@ class ModelLoader:
     def load_resnet18(self) -> nn.Module:
         """Loads a ResNet18 model."""
         model = models.resnet18()
+        for param in model.parameters():
+            param.requires_grad = False
+
         num_features = model.fc.in_features
         model.fc = nn.Linear(num_features, self.num_classes)
+        return model
+
+    def load_densenet121(self) -> nn.Module:
+        """Loads a DenseNet121 model."""
+        model = models.densenet121()
+        for param in model.parameters():
+            param.requires_grad = False
+
+        num_features = model.classifier.in_features
+        model.classifier = nn.Linear(num_features, self.num_classes)
         return model
 
     # Add more methods for other models...
