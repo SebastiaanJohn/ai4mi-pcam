@@ -173,5 +173,6 @@ tb_logs/
 # Project-specific files (e.g. datasets, models, etc.)
 *.h5
 *.gz
+*.pt
 # Any file/directory in experiments
 experiments/
