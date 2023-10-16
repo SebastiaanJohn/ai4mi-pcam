@@ -28,8 +28,8 @@ def predict_labels(imgs_preprocessed: torch.Tensor, model: nn.Module, requires_g
             logits = model(imgs_preprocessed)
 
     if logits.shape[1] == 1:
-        # We want to pretend like we have 2 output classes, so we need to
-        # apply a sigmoid and after that set the second class to 1 - sigmoid.
-        return torch.cat((F.sigmoid(logits), 1 - F.sigmoid(logits)), dim=1)
+        # We want to pretend like we have 2 output classes, so we need to apply a
+        # sigmoid to the positive class and that set the negative class to 1 - sigmoid.
+        return torch.cat((1 - F.sigmoid(logits), F.sigmoid(logits)), dim=1)
     else:
         return F.softmax(logits, dim=1)  # convert to probabilities

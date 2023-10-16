@@ -1,4 +1,5 @@
 import argparse
+import collections
 import logging
 from collections.abc import Callable, Sequence
 from math import ceil
@@ -13,10 +14,11 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.utils.data as data
-from torchvision.models import densenet121, resnet34, resnet50
+from torchvision.models import densenet121, resnet34, resnet50, vit_b_16
 
 from src.config import settings
 from src.datasets.PCAM.datamodule import PCAMDataModule
+from src.engines.system import PCAMSystem
 from src.xai.integrated_gradients import integrated_gradients
 from src.xai.lime import lime
 from src.xai.saliency_mapping import saliency_mapping
@@ -70,19 +72,32 @@ def load_model(model_name: str) -> nn.Module:
         model = resnet50()
     elif model_name == "densenet121":
         model = densenet121()
-    elif model_name == "vf-cnn":
-        model = vfcnn()  # TODO
+    elif model_name == "vit":
+        model = vit_b_16()
     else:
         raise ValueError(f"Unknown model: {model_name}")
 
-    num_features = model.fc.in_features
-    model.fc = nn.Linear(num_features, 1)
+    if model_name == "densenet121":
+        num_features = cast(nn.Linear, model.classifier).in_features
+        model.classifier = nn.Linear(num_features, 1)
+    elif model_name == "vit":
+        num_features = cast(nn.Linear, model.heads.head).in_features
+        model.heads.head = nn.Linear(num_features, 1)
+    else:
+        num_features = cast(nn.Linear, model.fc).in_features
+        model.fc = nn.Linear(num_features, 1)
+
     model.eval()
 
-    # TODO load model from checkpoint
-    # MODEL_PATH = "./src/models/checkpoints/best-loss-model-epoch=00-val_loss=0.83.ckpt"
+    MODEL_PATHS = {
+        "resnet34": "./models/ResNet34/best-loss-model-epoch=00-val_loss=0.40.ckpt",
+        "resnet50": "./models/ResNet50/best-loss-model-epoch=02-val_loss=0.43.ckpt",
+        "densenet121": "./models/DenseNet121/best-loss-model-epoch=01-val_loss=0.37.ckpt",
+        "vit": "./models/ViT/best-loss-model-epoch=01-val_loss=0.52.ckpt",
+    }
 
-    # _ = PCAMSystem.load_from_checkpoint(checkpoint_path=MODEL_PATH, model=model)
+    system = PCAMSystem.load_from_checkpoint(checkpoint_path=MODEL_PATHS[model_name], model=model, map_location="cpu")
+    model = cast(nn.Module, system.model)
 
     return model
 
@@ -122,10 +137,10 @@ def explain_model(
 
     Returns:
         Tuple containing:
-            labels_pred: Predicted labels.
-                Shape: [num_images]
             heatmaps: Heatmaps signifying what the model looks at.
                 Shape: [num_images, height, width]
+            labels_pred: Predicted labels.
+                Shape: [num_images]
     """
     # Select the explanation method.
     explanation_method = select_explanation_method(explanation_method_name)
@@ -137,20 +152,20 @@ def explain_model(
     # Determine where the results should be cached.
     cache_path = Path(f"./data/results/{explanation_method_name}_{model_name}.pt")
 
-    if cache_path.exists() and False:  # TODO remove False
+    if cache_path.exists():
         # If the results for this model have already been calculated, retrieve the cache.
         logging.info(f"Loading cache for {model_name}...")
-        labels_pred, heatmaps = torch.load(cache_path)
-        start_at = len(labels_pred)
+        heatmaps, labels_pred = torch.load(cache_path)
+        start_at = sum(len(l) for l in labels_pred)  # type: ignore
         logging.info(f"Number of results loaded: {start_at}")
         if start_at >= num_images:
             # If the cache contains enough results, we're done.
             logging.info("Cache contains enough results. Skipping.")
-            return torch.concatenate(labels_pred), torch.concatenate(heatmaps)
+            return torch.concatenate(heatmaps), torch.concatenate(labels_pred)
     else:
         logging.info(f"No cache found at {cache_path}.")
-        labels_pred = []
         heatmaps = []
+        labels_pred = []
         start_at = 0
 
     # Now calculate the rest of the results.
@@ -187,27 +202,24 @@ def explain_model(
         # Calculate the heatmaps.
         heatmaps_batch, labels_pred_batch = explanation_method(imgs_preprocessed_batch, model)
 
-        # Average across channels to get a single value per pixel.
-        heatmaps_batch = torch.mean(heatmaps_batch, dim=-1)  # b x h x w x c -> b x h x w
-
         # Normalize the heatmaps.
         heatmaps_agg = heatmaps_batch.reshape(curr_batch_size, -1)  # torch doesn't support min/max over multiple dims
-        heatmaps_min = torch.min(heatmaps_agg, dim=-1)[0].reshape(-1, 1, 1)
-        heatmaps_max = torch.max(heatmaps_agg, dim=-1)[0].reshape(-1, 1, 1)
+        heatmaps_min = torch.min(heatmaps_agg, dim=-1).values.reshape(-1, 1, 1)
+        heatmaps_max = torch.max(heatmaps_agg, dim=-1).values.reshape(-1, 1, 1)
         heatmaps_batch = (heatmaps_batch - heatmaps_min) / (heatmaps_max - heatmaps_min)  # normalize to [0, 1]
-        heatmaps_batch /= heatmaps_batch.sum()  # normalize to sum to 1
+        heatmaps_batch /= heatmaps_batch.sum(dim=(-2, -1), keepdims=True)  # normalize to sum to 1
 
         # Append the batches.
-        labels_pred.append(labels_pred_batch)
         heatmaps.append(heatmaps_batch)
+        labels_pred.append(labels_pred_batch)
 
         # Save the results.
-        torch.save((labels_pred, heatmaps), cache_path)
+        torch.save((heatmaps, labels_pred), cache_path)
 
         # Update the index.
         idx += curr_batch_size
 
-    return torch.concatenate(labels_pred), torch.concatenate(heatmaps)
+    return torch.concatenate(heatmaps), torch.concatenate(labels_pred)
 
 
 def explain_models(
@@ -230,31 +242,37 @@ def explain_models(
 
     Returns:
         Tuple containing:
-            labels_pred: Predicted labels.
-                Length: num_models
-                Shape of inner Tensors: [num_images]
             heatmaps: Heatmaps signifying what the model looks at.
                 Length: num_models
                 Shape of inner Tensors: [num_images, height, width]
+            labels_pred: Predicted labels.
+                Length: num_models
+                Shape of inner Tensors: [num_images]
     """
     # Calculate and cache the heatmaps for each model.
-    labels_pred_models = []
     heatmaps_models = []
+    labels_pred_models = []
 
     for model_name in model_names:
-        logging.info("/" + " " * (63 + len(model_name)) + "\\")
-        logging.info(f"| ================= Calculating heatmaps for {model_name} ================= |")
-        logging.info("\\" + " " * (63 + len(model_name)) + "/")
+        # Pretty print so that the output is always 80 characters wide.
+        chars_left = 80 - 45 - len(model_name)
+        logging.info("/" + " " * 64 + "\\")
+        logging.info(
+            f"| {'=' * (chars_left // 2)} "
+            f"Calculating heatmaps for {model_name}"
+            f" {'='* (chars_left - chars_left // 2)} |"
+        )
+        logging.info("\\" + " " * 64 + "/")
 
-        labels_pred, heatmaps = explain_model(
+        heatmaps, labels_pred = explain_model(
             explanation_method_name, model_name, test_dataloader, device, batch_size, num_images
         )
 
         # Append the results.
-        labels_pred_models.append(labels_pred)
         heatmaps_models.append(heatmaps)
+        labels_pred_models.append(labels_pred)
 
-    return labels_pred_models, heatmaps_models
+    return heatmaps_models, labels_pred_models
 
 
 def weighted_iou(heatmaps1: torch.Tensor, heatmaps2: torch.Tensor) -> torch.Tensor:
@@ -409,18 +427,22 @@ def display_matrix(
     plt.show()
 
 
-def visualize_agreement_table(agreement_table: np.ndarray, model_names: list[str]) -> None:
+def visualize_agreement_table(
+    agreement_table: np.ndarray, explanation_method_name: str, model_names: list[str]
+) -> None:
     """Visualize the agreement table.
 
     Args:
         agreement_table: The agreement table.
             Shape: [num_models, num_models]
+        explanation_method_name: The name of the explanation method.
         model_names: List of model names.
             Length: num_models
     """
+    title = f"{explanation_method_name.replace('_', ' ').capitalize()}"  # , Image #{i + 1}"
     display_matrix(
         agreement_table,
-        "Agreement between models\n(Mean Weighted IoU)",
+        f"{title}\nAgreement between models\n(Mean Weighted IoU)",
         "Model 1",
         "Model 2",
         np.arange(len(model_names)),
@@ -439,7 +461,7 @@ def plot_heatmaps(
     model_name2: str,
     pred_label1: int,
     pred_label2: int,
-    title: str,
+    explanation_method_name: str,
 ) -> None:
     """Plot the heatmap of the given image.
 
@@ -455,12 +477,13 @@ def plot_heatmaps(
         model_name2: Name of the second model.
         pred_label1: Predicted label for the first model.
         pred_label2: Predicted label for the second model.
-        title: Title of the plot.
+        explanation_method_name: The name of the explanation method.
     """
     img = torch.permute(img, (1, 2, 0))  # c x h x w -> h x w x c
 
     fig, axs = plt.subplots(1, 5, figsize=(21, 4))
     axs = cast(NDArrayGeneric[matplotlib.axes.Axes], axs)
+    title = f"{explanation_method_name.replace('_', ' ').capitalize()}"  # , Image #{i + 1}"
     fig.suptitle(f"{title}, IoU = {weighted_iou(heatmap1, heatmap2).item():.2f}", fontsize=20)
 
     vmax = max(torch.max(heatmap1).item(), torch.max(heatmap2).item())
@@ -508,7 +531,7 @@ def main(args: argparse.Namespace) -> None:
         raise ValueError(f"Expected at most {len(test_dataloader)} images, got {args.num_images}")
 
     # Calculate and cache the heatmaps for each model.
-    labels_pred, heatmaps = explain_models(
+    heatmaps, labels_pred = explain_models(
         args.explanation, args.models, test_dataloader, device, args.batch_size, args.num_images
     )
 
@@ -523,14 +546,14 @@ def main(args: argparse.Namespace) -> None:
                 args.models[1],
                 int(labels_pred[0][i].item()),
                 int(labels_pred[1][i].item()),
-                f"{args.explanation.replace('_', ' ').capitalize()}, Image #{i + 1}",
+                args.explanation,
             )
     else:
         # Calculate the agreement between each pair of models.
         agreement_table = calculate_agreement(heatmaps)
 
         # Visualize the agreement table.
-        visualize_agreement_table(agreement_table, args.models)
+        visualize_agreement_table(agreement_table, args.explanation, args.models)
 
 
 if __name__ == "__main__":
@@ -551,7 +574,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--models",
         type=str,
-        choices=["resnet34", "resnet50", "densenet121", "vf-cnn"],
+        choices=["resnet34", "resnet50", "densenet121", "vit"],
         nargs="+",
         required=True,
         help="The models to compare (must be at least 2).",

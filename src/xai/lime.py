@@ -237,7 +237,7 @@ def lime_helper(
 
     Returns:
         heatmap: Heatmap of the model's output w.r.t. the input images.
-            Shape: [batch_size, height, width, 1]
+            Shape: [batch_size, height, width]
         labels_pred: Predicted labels.
             Shape: [batch_size]
     """
@@ -278,7 +278,7 @@ def lime_helper(
     # Create the heatmaps.
     heatmap = torch.stack(
         [create_heatmap(segmap, coefficients, device) for segmap, coefficients in zip(all_segmap, all_coefficients)]
-    ).unsqueeze(3)
+    )
 
     return heatmap, labels_pred
 
@@ -293,8 +293,10 @@ def lime(imgs_preprocessed: torch.Tensor, model: nn.Module) -> tuple[torch.Tenso
 
     Returns:
         heatmap: Heatmap of the model's output w.r.t. the input images.
-            Shape: [batch_size, height, width, channels]
+            Shape: [batch_size, height, width]
         labels_pred: Predicted labels.
             Shape: [batch_size]
     """
+    
+
     return lime_helper(imgs_preprocessed, model)

@@ -10,7 +10,7 @@ from src.xai.xai_helpers import predict_labels
 def integrated_gradients_helper(
     imgs_preprocessed: torch.Tensor, model: nn.Module, baselines_preprocessed: torch.Tensor, steps: int = 20
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    """Calculate heatmaps using Integrated Gradients.
+    """Calculate gradients using Integrated Gradients.
 
     Args:
         imgs_preprocessed: Batch of pre-processed images.
@@ -21,8 +21,8 @@ def integrated_gradients_helper(
         steps: Number of steps between the baseline and the input. Defaults to 20.
 
     Returns:
-        heatmap: Heatmap of the model's output w.r.t. the input images.
-            Shape: [batch_size, height, width, channels]
+        gradients: Gradients of the model's output w.r.t. the input images.
+            Shape: [batch_size, channels, height, width]
         labels_pred: Predicted labels.
             Shape: [batch_size]
     """
@@ -55,9 +55,6 @@ def integrated_gradients_helper(
     # already divided by `steps` when they were initialized.
     gradients *= diffs_preprocessed
 
-    # Permute the dimensions to match the input images.
-    gradients = gradients.permute(0, 2, 3, 1)  # b x c x h x w -> b x h x w x c
-
     return gradients, labels_pred
 
 
@@ -71,9 +68,17 @@ def integrated_gradients(imgs_preprocessed: torch.Tensor, model: nn.Module) -> t
 
     Returns:
         heatmap: Heatmap of the model's output w.r.t. the input images.
-            Shape: [batch_size, height, width, channels]
+            Shape: [batch_size, height, width]
         labels_pred: Predicted labels.
             Shape: [batch_size]
     """
+    # Initialize baseline images.
     baselines_preprocessed = torch.zeros_like(imgs_preprocessed)
-    return integrated_gradients_helper(imgs_preprocessed, model, baselines_preprocessed)
+
+    # Calculate gradient maps.
+    gradients, labels_pred = integrated_gradients_helper(imgs_preprocessed, model, baselines_preprocessed)
+
+    # Calculate heatmaps.
+    heatmap = torch.abs(gradients).max(dim=1).values
+
+    return heatmap, labels_pred
