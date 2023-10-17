@@ -1,5 +1,6 @@
 """PyTorch Lightning DataModule for PCAM dataset."""
 
+from collections.abc import Callable
 from pathlib import Path
 
 import lightning.pytorch as pl
@@ -19,6 +20,7 @@ class PCAMDataModule(pl.LightningDataModule):
         num_workers: int = 8,
         lazy_loading: bool = False,
         crop_center: bool = False,
+        transform: Callable | None = None,
     ) -> None:
         """Initialize the PCAMDataModule."""
         super().__init__()
@@ -26,7 +28,7 @@ class PCAMDataModule(pl.LightningDataModule):
         self._batch_size = batch_size
         self._num_workers = num_workers
         self._lazy_loading = lazy_loading
-        self._transform = None
+        self._transform = transform
         self._crop_center = crop_center
         self._num_classes = 1
 
@@ -65,22 +67,19 @@ class PCAMDataModule(pl.LightningDataModule):
     def train_dataloader(self) -> DataLoader:
         """Return the training dataloader."""
         return DataLoader(
-            self._train_dataset, batch_size=self._batch_size, shuffle=True, num_workers=self._num_workers,
+            self._train_dataset, batch_size=self._batch_size, shuffle=True, num_workers=self._num_workers
         )
 
     def val_dataloader(self) -> DataLoader:
         """Return the validation dataloader."""
-        return DataLoader(
-            self._val_dataset, batch_size=self._batch_size, shuffle=False, num_workers=self._num_workers,
-        )
+        return DataLoader(self._val_dataset, batch_size=self._batch_size, shuffle=False, num_workers=self._num_workers)
 
     def test_dataloader(self) -> DataLoader:
         """Return the test dataloader."""
         return DataLoader(
-            self._test_dataset, batch_size=self._batch_size, shuffle=False, num_workers=self._num_workers,
+            self._test_dataset, batch_size=self._batch_size, shuffle=False, num_workers=self._num_workers
         )
 
     def predict_dataloader(self) -> EVAL_DATALOADERS:
         """Return the prediction dataloader."""
         return self.test_dataloader()
-

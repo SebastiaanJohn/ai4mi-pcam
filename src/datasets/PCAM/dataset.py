@@ -77,5 +77,3 @@ class PCAMDataset(Dataset):
         sample = self._transform(sample) if self._transform else transforms.ToTensor()(sample)
 
         return sample, target
-
-

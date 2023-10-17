@@ -1,5 +1,4 @@
 import argparse
-import collections
 import logging
 from collections.abc import Callable, Sequence
 from math import ceil
@@ -14,6 +13,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.utils.data as data
+from torchvision import transforms
 from torchvision.models import densenet121, resnet34, resnet50, vit_b_16
 
 from src.config import settings
@@ -264,9 +264,25 @@ def explain_models(
         )
         logging.info("\\" + " " * 64 + "/")
 
+        if model_name == "vit":
+            test_dataloader.dataset._transform = transforms.Compose(
+                [transforms.Resize((224, 224)), transforms.ToTensor()]
+            )
+        else:
+            test_dataloader.dataset._transform = None
+
         heatmaps, labels_pred = explain_model(
             explanation_method_name, model_name, test_dataloader, device, batch_size, num_images
         )
+
+        if model_name == "vit":
+            # Cast the heatmaps back to [b, 96, 96].
+            print(f"{heatmaps.shape=}")
+            transform = transforms.Compose(
+                [transforms.ToPILImage(), transforms.Resize((96, 96)), transforms.ToTensor()]
+            )
+            heatmaps = torch.concatenate([transform(h) for h in heatmaps])
+            print(f"{heatmaps.shape=}")
 
         # Append the results.
         heatmaps_models.append(heatmaps)
