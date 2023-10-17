@@ -10,3 +10,4 @@ h5py
 Pillow
 pydantic
 pydantic-settings
+timm
