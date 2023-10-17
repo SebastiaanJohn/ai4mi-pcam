@@ -1,4 +1,5 @@
 import argparse
+import collections
 import logging
 from collections.abc import Callable, Sequence
 from math import ceil
@@ -12,15 +13,15 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import torch.utils.data as data
-from lime import lime_image
-from torchvision.models import densenet121, resnet34, resnet50
-from torchvision.transforms import transforms
-from tqdm.auto import tqdm
+from torchvision.models import densenet121, resnet34, resnet50, vit_b_16
 
 from src.config import settings
 from src.datasets.PCAM.datamodule import PCAMDataModule
+from src.engines.system import PCAMSystem
+from src.xai.integrated_gradients import integrated_gradients
+from src.xai.lime import lime
+from src.xai.saliency_mapping import saliency_mapping
 
 
 ExplanationMethod: TypeAlias = Callable[[torch.Tensor, nn.Module], tuple[torch.Tensor, torch.Tensor]]
@@ -45,12 +46,12 @@ def select_explanation_method(explanation_method_name: str) -> ExplanationMethod
     Returns:
         explanation_method: The explanation method's function.
     """
-    if explanation_method_name == "lime":
-        explanation_method = lime
+    if explanation_method_name == "saliency_mapping":
+        explanation_method = saliency_mapping
     elif explanation_method_name == "integrated_gradients":
         explanation_method = integrated_gradients
-    elif explanation_method_name == "saliency_mapping":
-        explanation_method = saliency_mapping
+    elif explanation_method_name == "lime":
+        explanation_method = lime
     else:
         raise ValueError(f"Unknown explanation method: {explanation_method_name}")
     return explanation_method
@@ -71,19 +72,32 @@ def load_model(model_name: str) -> nn.Module:
         model = resnet50()
     elif model_name == "densenet121":
         model = densenet121()
-    elif model_name == "vf-cnn":
-        model = vfcnn()  # TODO
+    elif model_name == "vit":
+        model = vit_b_16()
     else:
         raise ValueError(f"Unknown model: {model_name}")
 
-    num_features = model.fc.in_features
-    model.fc = nn.Linear(num_features, 1)
+    if model_name == "densenet121":
+        num_features = cast(nn.Linear, model.classifier).in_features
+        model.classifier = nn.Linear(num_features, 1)
+    elif model_name == "vit":
+        num_features = cast(nn.Linear, model.heads.head).in_features
+        model.heads.head = nn.Linear(num_features, 1)
+    else:
+        num_features = cast(nn.Linear, model.fc).in_features
+        model.fc = nn.Linear(num_features, 1)
+
     model.eval()
 
-    # TODO load model from checkpoint
-    # MODEL_PATH = "./src/models/checkpoints/best-loss-model-epoch=00-val_loss=0.83.ckpt"
+    MODEL_PATHS = {
+        "resnet34": "./models/ResNet34/best-loss-model-epoch=00-val_loss=0.40.ckpt",
+        "resnet50": "./models/ResNet50/best-loss-model-epoch=02-val_loss=0.43.ckpt",
+        "densenet121": "./models/DenseNet121/best-loss-model-epoch=01-val_loss=0.37.ckpt",
+        "vit": "./models/ViT/best-loss-model-epoch=01-val_loss=0.52.ckpt",
+    }
 
-    # _ = PCAMSystem.load_from_checkpoint(checkpoint_path=MODEL_PATH, model=model)
+    system = PCAMSystem.load_from_checkpoint(checkpoint_path=MODEL_PATHS[model_name], model=model, map_location="cpu")
+    model = cast(nn.Module, system.model)
 
     return model
 
@@ -101,196 +115,6 @@ def init_dataloader(batch_size: int) -> data.DataLoader:
     datamodule.setup(stage="predict")
     test_dataloader = datamodule.test_dataloader()
     return test_dataloader
-
-
-def predict_labels(imgs_preprocessed: torch.Tensor, model: nn.Module, requires_grad: bool = True) -> torch.Tensor:
-    """Predict the an image's label using the given model.
-
-    Note: If the model has only one output neuron, the output tensor will contain two columns. The first column
-    contains the probability of the image belonging to the positive class, and the second column is the probability of
-    the image belonging to the negative class.
-
-    Args:
-        imgs_preprocessed: Batch of pre-processed images.
-            Shape: [batch_size, channels, height, width]
-        model: Model to use.
-        requires_grad: Whether to calculate gradients. Defaults to True.
-
-    Returns:
-        probs: Tensor containing the probability of each possible label for each image in the batch.
-            Shape: [batch_size, num_classes]
-    """
-    # Calculate logits and convert to probabilities.
-    if requires_grad:
-        logits = model(imgs_preprocessed)  # batch_size x num_classes
-    else:
-        with torch.no_grad():
-            logits = model(imgs_preprocessed)
-
-    if logits.shape[1] == 1:
-        # We want to pretend like we have 2 output classes, so we need to
-        # apply a sigmoid and after that set the second class to 1 - sigmoid.
-        return torch.cat((F.sigmoid(logits), 1 - F.sigmoid(logits)), dim=1)
-    else:
-        return F.softmax(logits, dim=1)  # convert to probabilities
-
-
-def lime(imgs_preprocessed: torch.Tensor, model: nn.Module) -> tuple[torch.Tensor, torch.Tensor]:
-    """Calculate the heatmap using LIME.
-
-    Args:
-        imgs_preprocessed: Batch of pre-processed images.
-            Shape: [batch_size, channels, height, width]
-        model: Model to use.
-
-    Returns:
-        heatmap: Heatmap of the model's output w.r.t. the input images.
-            Shape: [batch_size, height, width, channels]
-        labels_pred: Predicted labels.
-            Shape: [batch_size]
-    """
-    pill_transf = transforms.Compose(
-        [
-            transforms.ToPILImage(),
-            # transforms.Resize((256, 256)),
-            # transforms.CenterCrop(224)
-        ]
-    )
-
-    preprocess = transforms.Compose([transforms.ToTensor()])
-
-    def batch_predict(batch):
-        batch = torch.stack(tuple(preprocess(i) for i in batch), dim=0)
-        logits = model(batch)
-        probs = torch.cat((F.sigmoid(logits), 1 - F.sigmoid(logits)), dim=1)
-        return probs.detach().cpu().numpy()
-
-    explainer = lime_image.LimeImageExplainer()
-
-    labels_pred = torch.tensor([])
-    explanation_masks = torch.tensor([])
-    for image in imgs_preprocessed:
-        explanation = explainer.explain_instance(
-            np.array(pill_transf(image)), batch_predict, top_labels=2, num_samples=1000
-        )
-
-        _, mask = explanation.get_image_and_mask(1, positive_only=True, num_features=2)
-        pred_label = torch.tensor([explanation.top_labels[0]])
-
-        labels_pred = torch.cat((labels_pred, pred_label), dim=0)
-        explanation_masks = torch.cat((explanation_masks, torch.tensor([mask])), dim=0)
-
-    heatmap = explanation_masks.unsqueeze(-1)
-
-    return heatmap, labels_pred
-
-
-def saliency_mapping(imgs_preprocessed: torch.Tensor, model: nn.Module) -> tuple[torch.Tensor, torch.Tensor]:
-    """Calculate the gradients using Saliency Mapping.
-
-    Args:
-        imgs_preprocessed: Batch of pre-processed images.
-            Shape: [batch_size, channels, height, width]
-        model: Model to use.
-
-    Returns:
-        heatmap: Heatmap of the model's output w.r.t. the input images.
-            Shape: [batch_size, height, width, channels]
-        labels_pred: Predicted labels.
-            Shape: [batch_size]
-    """
-    # Set the requires_grad flag to True to calculate gradients.
-    imgs_preprocessed = imgs_preprocessed.requires_grad_(True)
-
-    # Predict labels.
-    probs = predict_labels(imgs_preprocessed, model, True)
-
-    # Get the indices of the target labels.
-    labels_pred = torch.argmax(probs, dim=1)
-
-    # Calculate gradients for each image in the batch.
-    gradients = []
-    for i in tqdm(range(len(labels_pred)), unit="image"):
-        model.zero_grad()
-        probs[i, labels_pred[i]].backward(retain_graph=True)
-        gradient = cast(torch.Tensor, imgs_preprocessed.grad)[i].detach()
-        gradients.append(gradient)
-    gradients = torch.stack(gradients)
-    gradients = gradients.permute(0, 2, 3, 1)  # b x c x h x w -> b x h x w x c
-
-    return gradients, labels_pred
-
-
-def integrated_gradients_helper(
-    imgs_preprocessed: torch.Tensor, model: nn.Module, baselines_preprocessed: torch.Tensor, steps: int = 20
-) -> tuple[torch.Tensor, torch.Tensor]:
-    """Calculate the gradients using Integrated Gradients.
-
-    Args:
-        imgs_preprocessed: Batch of pre-processed images.
-            Shape: [batch_size, channels, height, width]
-        model: Model to use.
-        baselines_preprocessed: Batch of pre-processed baseline images.
-            Shape: [batch_size, channels, height, width]
-        steps: Number of steps between the baseline and the input. Defaults to 20.
-
-    Returns:
-        heatmap: Heatmap of the model's output w.r.t. the input images.
-            Shape: [batch_size, height, width, channels]
-        labels_pred: Predicted labels.
-            Shape: [batch_size]
-    """
-    # Predict labels.
-    probs = predict_labels(imgs_preprocessed, model, True)
-
-    # Get the indices of the target labels.
-    labels_pred = torch.argmax(probs, dim=1)
-
-    # Calculate gradients for each image in the batch.
-    gradients = torch.zeros_like(imgs_preprocessed)
-    diffs_preprocessed = (imgs_preprocessed.detach() - baselines_preprocessed) / steps
-    partial_imgs_preprocessed = baselines_preprocessed.clone()
-    for _ in tqdm(range(steps), unit="step"):
-        partial_imgs_preprocessed += diffs_preprocessed
-        partial_imgs_preprocessed_cp = (
-            partial_imgs_preprocessed.clone().detach().requires_grad_(True)
-        )  # Make tensor a leaf node.
-        partial_probs = predict_labels(partial_imgs_preprocessed_cp, model, True)
-        for i in range(len(labels_pred)):
-            model.zero_grad()
-            partial_probs[i, labels_pred[i]].backward(retain_graph=True)
-            gradient = cast(torch.Tensor, partial_imgs_preprocessed_cp.grad)[i].detach()
-            gradients[i] += gradient
-
-    # Average the gradients across the steps and multiply by the diffs.
-    # This line is sort of a "hack": it performs the averaging operation and
-    # the multiplication by (x - x') in one step. It works because the
-    # gradients were already summed across the steps, and the diffs were
-    # already divided by `steps` when they were initialized.
-    gradients *= diffs_preprocessed
-
-    # Permute the dimensions to match the input images.
-    gradients = gradients.permute(0, 2, 3, 1)  # b x c x h x w -> b x h x w x c
-
-    return gradients, labels_pred
-
-
-def integrated_gradients(imgs_preprocessed: torch.Tensor, model: nn.Module) -> tuple[torch.Tensor, torch.Tensor]:
-    """Calculate the gradients using IG with a black image baseline.
-
-    Args:
-        imgs_preprocessed: Batch of pre-processed images.
-            Shape: [batch_size, channels, height, width]
-        model: Model to use.
-
-    Returns:
-        heatmap: Heatmap of the model's output w.r.t. the input images.
-            Shape: [batch_size, height, width, channels]
-        labels_pred: Predicted labels.
-            Shape: [batch_size]
-    """
-    baselines_preprocessed = torch.zeros_like(imgs_preprocessed)
-    return integrated_gradients_helper(imgs_preprocessed, model, baselines_preprocessed)
 
 
 def explain_model(
@@ -313,10 +137,10 @@ def explain_model(
 
     Returns:
         Tuple containing:
-            labels_pred: Predicted labels.
-                Shape: [num_images]
             heatmaps: Heatmaps signifying what the model looks at.
                 Shape: [num_images, height, width]
+            labels_pred: Predicted labels.
+                Shape: [num_images]
     """
     # Select the explanation method.
     explanation_method = select_explanation_method(explanation_method_name)
@@ -328,72 +152,74 @@ def explain_model(
     # Determine where the results should be cached.
     cache_path = Path(f"./data/results/{explanation_method_name}_{model_name}.pt")
 
-    if cache_path.exists() and False:  # TODO remove False
+    if cache_path.exists():
         # If the results for this model have already been calculated, retrieve the cache.
         logging.info(f"Loading cache for {model_name}...")
-        labels_pred, heatmaps = torch.load(cache_path)
-        start_at = len(labels_pred)
+        heatmaps, labels_pred = torch.load(cache_path)
+        start_at = sum(len(l) for l in labels_pred)  # type: ignore
         logging.info(f"Number of results loaded: {start_at}")
         if start_at >= num_images:
             # If the cache contains enough results, we're done.
             logging.info("Cache contains enough results. Skipping.")
-            return torch.concatenate(labels_pred), torch.concatenate(heatmaps)
+            return torch.concatenate(heatmaps), torch.concatenate(labels_pred)
     else:
-        logging.info("No cache found.")
-        labels_pred = []
+        logging.info(f"No cache found at {cache_path}.")
         heatmaps = []
+        labels_pred = []
         start_at = 0
 
     # Now calculate the rest of the results.
-    logging.info(f"Calculating results for {model_name}...")
+    logging.info(f"Calculating heatmaps for {model_name}...")
+    logging.info("NOTE: Intermediate results are automatically")
+    logging.info("      saved to disk after every batch. You can")
+    logging.info("      stop the calculation at any time, and the")
+    logging.info("      program will resume from where it left off.")
 
     idx = 0
-    for imgs_preprocessed_batch, _ in tqdm(test_dataloader, unit="batch", total=ceil(num_images / batch_size)):
+    for batch_idx, (imgs_preprocessed_batch, _) in enumerate(test_dataloader):
         # Check if we need to skip (a part of) this batch.
-        batch_size = len(imgs_preprocessed_batch)
+        curr_batch_size = len(imgs_preprocessed_batch)
         if idx == num_images:
             # We're done.
             break
-        if idx + batch_size <= start_at:
+        if idx + curr_batch_size <= start_at:
             # Skip the whole batch.
-            idx += batch_size
+            idx += curr_batch_size
             continue
-        elif idx < start_at < idx + batch_size:
+        elif idx < start_at < idx + curr_batch_size:
             # Skip the first few images in the batch.
             imgs_preprocessed_batch = imgs_preprocessed_batch[start_at - idx :]
             idx = start_at
-            batch_size = len(imgs_preprocessed_batch)
-        if num_images < idx + batch_size:
+            curr_batch_size = len(imgs_preprocessed_batch)
+        if num_images < idx + curr_batch_size:
             # Skip the last few images in the batch.
             imgs_preprocessed_batch = imgs_preprocessed_batch[: num_images - idx]
-            batch_size = len(imgs_preprocessed_batch)
+            curr_batch_size = len(imgs_preprocessed_batch)
 
+        logging.info(f"[ Current batch: {batch_idx + 1}/{ceil(num_images / batch_size)} ]")
         imgs_preprocessed_batch = imgs_preprocessed_batch.to(device)
 
         # Calculate the heatmaps.
         heatmaps_batch, labels_pred_batch = explanation_method(imgs_preprocessed_batch, model)
 
-        # Average across channels to get a single value per pixel.
-        heatmaps_batch = torch.mean(heatmaps_batch, dim=-1)  # b x h x w x c -> b x h x w
-
         # Normalize the heatmaps.
-        heatmaps_agg = heatmaps_batch.reshape(batch_size, -1)  # pytorch doesn't support min/max over multiple dims
-        heatmaps_min = torch.min(heatmaps_agg, dim=-1)[0].reshape(-1, 1, 1)
-        heatmaps_max = torch.max(heatmaps_agg, dim=-1)[0].reshape(-1, 1, 1)
+        heatmaps_agg = heatmaps_batch.reshape(curr_batch_size, -1)  # torch doesn't support min/max over multiple dims
+        heatmaps_min = torch.min(heatmaps_agg, dim=-1).values.reshape(-1, 1, 1)
+        heatmaps_max = torch.max(heatmaps_agg, dim=-1).values.reshape(-1, 1, 1)
         heatmaps_batch = (heatmaps_batch - heatmaps_min) / (heatmaps_max - heatmaps_min)  # normalize to [0, 1]
-        heatmaps_batch /= heatmaps_batch.sum()  # normalize to sum to 1
+        heatmaps_batch /= heatmaps_batch.sum(dim=(-2, -1), keepdims=True)  # normalize to sum to 1
 
         # Append the batches.
-        labels_pred.append(labels_pred_batch)
         heatmaps.append(heatmaps_batch)
+        labels_pred.append(labels_pred_batch)
 
         # Save the results.
-        torch.save((labels_pred, heatmaps), cache_path)
+        torch.save((heatmaps, labels_pred), cache_path)
 
         # Update the index.
-        idx += batch_size
+        idx += curr_batch_size
 
-    return torch.concatenate(labels_pred), torch.concatenate(heatmaps)
+    return torch.concatenate(heatmaps), torch.concatenate(labels_pred)
 
 
 def explain_models(
@@ -416,27 +242,37 @@ def explain_models(
 
     Returns:
         Tuple containing:
-            labels_pred: Predicted labels.
-                Length: num_models
-                Shape of inner Tensors: [num_images]
             heatmaps: Heatmaps signifying what the model looks at.
                 Length: num_models
                 Shape of inner Tensors: [num_images, height, width]
+            labels_pred: Predicted labels.
+                Length: num_models
+                Shape of inner Tensors: [num_images]
     """
     # Calculate and cache the heatmaps for each model.
-    labels_pred_models = []
     heatmaps_models = []
+    labels_pred_models = []
 
     for model_name in model_names:
-        labels_pred, heatmaps = explain_model(
+        # Pretty print so that the output is always 80 characters wide.
+        chars_left = 80 - 45 - len(model_name)
+        logging.info("/" + " " * 64 + "\\")
+        logging.info(
+            f"| {'=' * (chars_left // 2)} "
+            f"Calculating heatmaps for {model_name}"
+            f" {'='* (chars_left - chars_left // 2)} |"
+        )
+        logging.info("\\" + " " * 64 + "/")
+
+        heatmaps, labels_pred = explain_model(
             explanation_method_name, model_name, test_dataloader, device, batch_size, num_images
         )
 
         # Append the results.
-        labels_pred_models.append(labels_pred)
         heatmaps_models.append(heatmaps)
+        labels_pred_models.append(labels_pred)
 
-    return labels_pred_models, heatmaps_models
+    return heatmaps_models, labels_pred_models
 
 
 def weighted_iou(heatmaps1: torch.Tensor, heatmaps2: torch.Tensor) -> torch.Tensor:
@@ -571,9 +407,7 @@ def display_matrix(
     scalar_mappable = get_scalar_mappable([0, 1], from_color="red", to_color="green")
 
     # Plot the matrices. Use a red-white-green colormap to show how similar the models' explanations are.
-    fig, ax = plt.subplots(
-        1, 1, figsize=(3 + min(4, matrix.shape[1] * 0.5), 2 + min(4, matrix.shape[0] * 0.5)), squeeze=False
-    )
+    fig, ax = plt.subplots(1, 1, figsize=(3 + min(4, matrix.shape[1] * 0.5), 2 + min(4, matrix.shape[0] * 0.5)))
     ax = cast(matplotlib.axes.Axes, ax)
 
     ax.imshow(matrix.T, cmap=scalar_mappable.get_cmap(), norm=scalar_mappable.norm)
@@ -593,18 +427,22 @@ def display_matrix(
     plt.show()
 
 
-def visualize_agreement_table(agreement_table: np.ndarray, model_names: list[str]) -> None:
+def visualize_agreement_table(
+    agreement_table: np.ndarray, explanation_method_name: str, model_names: list[str]
+) -> None:
     """Visualize the agreement table.
 
     Args:
         agreement_table: The agreement table.
             Shape: [num_models, num_models]
+        explanation_method_name: The name of the explanation method.
         model_names: List of model names.
             Length: num_models
     """
+    title = f"{explanation_method_name.replace('_', ' ').capitalize()}"  # , Image #{i + 1}"
     display_matrix(
         agreement_table,
-        "Agreement between models\n(Mean Weighted IoU)",
+        f"{title}\nAgreement between models\n(Mean Weighted IoU)",
         "Model 1",
         "Model 2",
         np.arange(len(model_names)),
@@ -623,7 +461,7 @@ def plot_heatmaps(
     model_name2: str,
     pred_label1: int,
     pred_label2: int,
-    title: str,
+    explanation_method_name: str,
 ) -> None:
     """Plot the heatmap of the given image.
 
@@ -639,12 +477,13 @@ def plot_heatmaps(
         model_name2: Name of the second model.
         pred_label1: Predicted label for the first model.
         pred_label2: Predicted label for the second model.
-        title: Title of the plot.
+        explanation_method_name: The name of the explanation method.
     """
     img = torch.permute(img, (1, 2, 0))  # c x h x w -> h x w x c
 
     fig, axs = plt.subplots(1, 5, figsize=(21, 4))
     axs = cast(NDArrayGeneric[matplotlib.axes.Axes], axs)
+    title = f"{explanation_method_name.replace('_', ' ').capitalize()}"  # , Image #{i + 1}"
     fig.suptitle(f"{title}, IoU = {weighted_iou(heatmap1, heatmap2).item():.2f}", fontsize=20)
 
     vmax = max(torch.max(heatmap1).item(), torch.max(heatmap2).item())
@@ -692,8 +531,7 @@ def main(args: argparse.Namespace) -> None:
         raise ValueError(f"Expected at most {len(test_dataloader)} images, got {args.num_images}")
 
     # Calculate and cache the heatmaps for each model.
-    logging.info("Calculating heatmaps...")
-    labels_pred, heatmaps = explain_models(
+    heatmaps, labels_pred = explain_models(
         args.explanation, args.models, test_dataloader, device, args.batch_size, args.num_images
     )
 
@@ -708,14 +546,14 @@ def main(args: argparse.Namespace) -> None:
                 args.models[1],
                 int(labels_pred[0][i].item()),
                 int(labels_pred[1][i].item()),
-                f"{args.explanation.replace('_', ' ').capitalize()}, Image #{i + 1}",
+                args.explanation,
             )
     else:
         # Calculate the agreement between each pair of models.
         agreement_table = calculate_agreement(heatmaps)
 
         # Visualize the agreement table.
-        visualize_agreement_table(agreement_table, args.models)
+        visualize_agreement_table(agreement_table, args.explanation, args.models)
 
 
 if __name__ == "__main__":
@@ -736,7 +574,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--models",
         type=str,
-        choices=["resnet34", "resnet50", "densenet121", "vf-cnn"],
+        choices=["resnet34", "resnet50", "densenet121", "vit"],
         nargs="+",
         required=True,
         help="The models to compare (must be at least 2).",
@@ -744,7 +582,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--explanation",
         type=str,
-        choices=["lime", "integrated_gradients", "saliency_mapping"],
+        choices=["saliency_mapping", "integrated_gradients", "lime"],
         required=True,
         help="The explanation method to use for generating heatmaps.",
     )
