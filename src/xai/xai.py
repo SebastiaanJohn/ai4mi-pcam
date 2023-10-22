@@ -17,7 +17,7 @@ import torch.utils.data as data
 from torchvision.models import densenet121, resnet34, resnet50, vit_b_16
 
 from src.config import settings
-from src.datasets.PCAM.datamodule import PCAMDataModule
+from src.datasets.pcam.datamodule import PCAMDataModule
 from src.engines.system import PCAMSystem
 from src.xai.integrated_gradients import integrated_gradients
 from src.xai.lime import lime

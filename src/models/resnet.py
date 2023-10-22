@@ -11,7 +11,12 @@ def get_resnet(
         num_classes: int = 1,
     ) -> nn.Module:
     """Returns a ResNet model with a custom classifier."""
-    weights = "IMAGENET1K_V2" if pretrained and version == "50" else None
+    if version == "50" and pretrained:
+        weights = "IMAGENET1K_V2"
+    elif version == "34" and pretrained:
+        weights = "DEFAULT"
+    else:
+        weights = None
 
     model = getattr(models, f"resnet{version}")(weights=weights)
 

@@ -32,7 +32,7 @@ def test(args) -> None:
 
     # Instantiate the data module
     data_module = PCAMDataModule(
-        data_dir=settings.raw_data_dir,
+        data_dir=settings.processed_data_dir / "pcam",
         batch_size=args.batch_size,
         num_workers=args.num_workers,
         transforms=transforms.Compose([

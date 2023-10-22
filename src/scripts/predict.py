@@ -8,7 +8,7 @@ from lightning.pytorch.loggers import TensorBoardLogger
 from loguru import logger
 
 from src.config import settings
-from src.datasets.PCAM import PCAMDataModule
+from src.datasets.pcam import PCAMDataModule
 from src.engines.system import PCAMSystem
 from src.utils.callbacks import Callbacks
 from src.utils.helpers import load_model_at_version

@@ -47,8 +47,16 @@ class PCAMSystem(pl.LightningModule):
     def model_step(self, batch: tuple[torch.Tensor, torch.Tensor]) -> tuple[float, torch.Tensor, torch.Tensor]:
         """Performs a single step on a batch of data."""
         img, targets = batch
-        logits = self(img).squeeze()
+        output = self(img)
+
+        # The following code is needed to support Inception V3
+        if isinstance(output, tuple) and hasattr(output, "logits"):
+            logits = output.logits.squeeze()
+        else:
+            logits = output.squeeze()
+
         loss = self.criterion(logits, targets)
+
         return loss, logits, targets
 
     def forward(self, img: torch.Tensor) -> torch.Tensor:
