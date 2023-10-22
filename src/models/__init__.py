@@ -6,6 +6,7 @@ import torch.nn as nn
 
 from .alexnet import get_alexnet
 from .densenet import get_densenet
+from .efficientnet import get_efficientnet
 from .inception_v3 import get_inception_v3
 from .resnet import get_resnet
 from .vgg11 import get_vgg11
@@ -19,6 +20,7 @@ MODEL_DICT = {
     "alexnet": get_alexnet,
     "inception": get_inception_v3,
     "vgg": get_vgg11,
+    "efficientnet": get_efficientnet,
 }
 
 def create_model(
