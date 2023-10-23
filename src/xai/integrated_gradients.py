@@ -75,8 +75,19 @@ def integrated_gradients(imgs_preprocessed: torch.Tensor, model: nn.Module) -> t
     # Initialize baseline images.
     baselines_preprocessed = torch.zeros_like(imgs_preprocessed)
 
-    # Calculate gradient maps.
-    gradients, labels_pred = integrated_gradients_helper(imgs_preprocessed, model, baselines_preprocessed)
+    # Calculate gradients for each image in the batch.
+    gradients = []
+    labels_pred = []
+
+    for i in tqdm(range(len(imgs_preprocessed)), unit="image"):
+        gradient, label_pred = integrated_gradients_helper(
+            imgs_preprocessed[i].unsqueeze(0), model, baselines_preprocessed
+        )
+        gradients.append(gradient)
+        labels_pred.append(label_pred)
+
+    gradients = torch.cat(gradients)
+    labels_pred = torch.cat(labels_pred)
 
     # Calculate heatmaps.
     heatmap = torch.abs(gradients).max(dim=1).values

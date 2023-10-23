@@ -14,10 +14,11 @@ import torch
 import torch.nn as nn
 import torch.utils.data as data
 from torchvision import transforms
-from torchvision.models import densenet121, resnet34, resnet50, vit_b_16
+from torchvision.models import alexnet, densenet121, efficientnet_b1, inception_v3, resnet34, resnet50, vgg11, vit_b_16
 
 from src.config import settings
 from src.datasets.pcam.datamodule import PCAMDataModule
+from src.datasets.pcam.dataset import PCAMDataset
 from src.engines.system import PCAMSystem
 from src.xai.integrated_gradients import integrated_gradients
 from src.xai.lime import lime
@@ -25,9 +26,17 @@ from src.xai.saliency_mapping import saliency_mapping
 
 
 ExplanationMethod: TypeAlias = Callable[[torch.Tensor, nn.Module], tuple[torch.Tensor, torch.Tensor]]
-
-
 DType = TypeVar("DType")
+
+
+class NoOpTransform:
+    def __call__(self, sample):
+        return sample
+
+
+to_tensor = transforms.ToTensor()
+normalize = NoOpTransform()
+# normalize = transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
 
 
 class NDArrayGeneric(np.ndarray, Generic[DType]):
@@ -68,32 +77,55 @@ def load_model(model_name: str) -> nn.Module:
     """
     if model_name == "resnet34":
         model = resnet34()
-    elif model_name == "resnet50":
-        model = resnet50()
-    elif model_name == "densenet121":
-        model = densenet121()
-    elif model_name == "vit":
-        model = vit_b_16()
-    else:
-        raise ValueError(f"Unknown model: {model_name}")
-
-    if model_name == "densenet121":
-        num_features = cast(nn.Linear, model.classifier).in_features
-        model.classifier = nn.Linear(num_features, 1)
-    elif model_name == "vit":
-        num_features = cast(nn.Linear, model.heads.head).in_features
-        model.heads.head = nn.Linear(num_features, 1)
-    else:
         num_features = cast(nn.Linear, model.fc).in_features
         model.fc = nn.Linear(num_features, 1)
+    elif model_name == "resnet50":
+        model = resnet50()
+        num_features = cast(nn.Linear, model.fc).in_features
+        model.fc = nn.Linear(num_features, 1)
+    elif model_name == "densenet121":
+        model = densenet121()
+        num_features = cast(nn.Linear, model.classifier).in_features
+        model.classifier = nn.Linear(num_features, 1)
+    elif model_name == "vit_b_16":
+        model = vit_b_16()
+        num_features = cast(nn.Linear, model.heads.head).in_features
+        model.heads.head = nn.Linear(num_features, 1)
+    elif model_name == "inception_v3":
+        model = inception_v3()
+        num_features = cast(nn.Linear, model.fc).in_features
+        model.fc = nn.Linear(num_features, 1)
+    elif model_name == "alexnet":
+        model = alexnet()
+        num_features = cast(nn.Linear, model.classifier[6]).in_features
+        model.classifier[6] = nn.Linear(num_features, 1)
+    elif model_name == "vgg11":
+        model = vgg11()
+        num_features = cast(nn.Linear, model.classifier[6]).in_features
+        model.classifier[6] = nn.Linear(num_features, 1)
+    elif model_name == "efficientnet":
+        model = efficientnet_b1()
+        num_features = cast(nn.Linear, model.classifier[1]).in_features
+        model.classifier[1] = nn.Linear(num_features, 1)
+    else:
+        raise ValueError(f"Unknown model: {model_name}")
 
     model.eval()
 
     MODEL_PATHS = {
-        "resnet34": "./models/ResNet34/best-loss-model-epoch=00-val_loss=0.40.ckpt",
-        "resnet50": "./models/ResNet50/best-loss-model-epoch=02-val_loss=0.43.ckpt",
-        "densenet121": "./models/DenseNet121/best-loss-model-epoch=01-val_loss=0.37.ckpt",
-        "vit": "./models/ViT/best-loss-model-epoch=01-val_loss=0.52.ckpt",
+        # "resnet34": "./models/ResNet34/best-loss-model-epoch=02-val_loss=0.38.ckpt",  # with norm, init imagenet, trained last layer
+        # "resnet34": "./models/ResNet34/best-loss-model-epoch=00-val_loss=0.44.ckpt",  # without norm, init imagenet, trained last layer
+        # "resnet34": "./models/ResNet34/best-loss-model-epoch=00-val_loss=0.40.ckpt",  # without norm, init random, trained all layers, old
+        # "resnet34": "./models/ResNet34/best-loss-model-epoch=00-val_loss=0.36.ckpt",  # without norm, init random, trained all layers, new
+        "resnet34": "./models/ResNet34/best-loss-model-epoch=00-val_loss=0.39.ckpt",  # without norm, init imagenet, trained all layers
+        # "resnet50": "./models/ResNet50/best-loss-model-epoch=00-val_loss=0.43.ckpt",  # without norm, init imagenet, trained last layer
+        "resnet50": "./models/ResNet50/best-loss-model-epoch=00-val_loss=0.83.ckpt",  # no one knows how this one was trained
+        "densenet121": "./models/DenseNet121/best-loss-model-epoch=04-val_loss=0.39.ckpt",
+        "vit_b_16": "./models/ViT_b_16/best-loss-model-epoch=03-val_loss=0.33.ckpt",
+        "inception_v3": "./models/Inception_V3/best-loss-model-epoch=09-val_loss=0.38.ckpt",
+        "alexnet": "./models/AlexNet/best-loss-model-epoch=06-val_loss=0.42.ckpt",
+        "vgg11": "./models/VGG11/best-loss-model-epoch=00-val_loss=0.42.ckpt",
+        "efficientnet": "./models/EfficientNet/best-loss-model-epoch=03-val_loss=0.43.ckpt",
     }
 
     system = PCAMSystem.load_from_checkpoint(checkpoint_path=MODEL_PATHS[model_name], model=model, map_location="cpu")
@@ -102,7 +134,7 @@ def load_model(model_name: str) -> nn.Module:
     return model
 
 
-def init_dataloader(batch_size: int) -> data.DataLoader:
+def init_dataloader(batch_size: int, num_workers: int) -> data.DataLoader:
     """Initialize the dataloader for the test set.
 
     Args:
@@ -111,7 +143,12 @@ def init_dataloader(batch_size: int) -> data.DataLoader:
     Returns:
         test_dataloader: Dataloader for the PCAM test set.
     """
-    datamodule = PCAMDataModule(data_dir=settings.raw_data_dir, batch_size=batch_size, lazy_loading=True)
+    datamodule = PCAMDataModule(
+        data_dir=settings.processed_data_dir / "pcam",
+        batch_size=batch_size,
+        num_workers=num_workers,
+        transforms=transforms.Compose([to_tensor, normalize]),
+    )
     datamodule.setup(stage="predict")
     test_dataloader = datamodule.test_dataloader()
     return test_dataloader
@@ -156,7 +193,7 @@ def explain_model(
         # If the results for this model have already been calculated, retrieve the cache.
         logging.info(f"Loading cache for {model_name}...")
         heatmaps, labels_pred = torch.load(cache_path)
-        start_at = sum(len(l) for l in labels_pred)  # type: ignore
+        start_at = sum(len(l) for l in labels_pred)
         logging.info(f"Number of results loaded: {start_at}")
         if start_at >= num_images:
             # If the cache contains enough results, we're done.
@@ -207,7 +244,7 @@ def explain_model(
         heatmaps_min = torch.min(heatmaps_agg, dim=-1).values.reshape(-1, 1, 1)
         heatmaps_max = torch.max(heatmaps_agg, dim=-1).values.reshape(-1, 1, 1)
         heatmaps_batch = (heatmaps_batch - heatmaps_min) / (heatmaps_max - heatmaps_min)  # normalize to [0, 1]
-        heatmaps_batch /= heatmaps_batch.sum(dim=(-2, -1), keepdims=True)  # normalize to sum to 1
+        heatmaps_batch /= heatmaps_batch.sum(dim=(-2, -1), keepdims=True)  # type: ignore  # normalize to sum to 1
 
         # Append the batches.
         heatmaps.append(heatmaps_batch)
@@ -258,31 +295,40 @@ def explain_models(
         chars_left = 80 - 45 - len(model_name)
         logging.info("/" + " " * 64 + "\\")
         logging.info(
-            f"| {'=' * (chars_left // 2)} "
-            f"Calculating heatmaps for {model_name}"
-            f" {'='* (chars_left - chars_left // 2)} |"
+            f"| {'=' * (chars_left // 2)} Calculating heatmaps for {model_name} {'='* (chars_left - chars_left // 2)} |"
         )
         logging.info("\\" + " " * 64 + "/")
 
-        if model_name == "vit":
-            test_dataloader.dataset._transform = transforms.Compose(
-                [transforms.Resize((224, 224)), transforms.ToTensor()]
+        # Resize the images to the input of the model if necessary.
+        if model_name == "vit_b_16":
+            cast(PCAMDataset, test_dataloader.dataset)._transform = transforms.Compose(
+                [transforms.Resize((224, 224)), to_tensor, normalize]
+            )
+        elif model_name == "inception_v3":
+            cast(PCAMDataset, test_dataloader.dataset)._transform = transforms.Compose(
+                [transforms.Resize((299, 299)), to_tensor, normalize]
             )
         else:
-            test_dataloader.dataset._transform = None
+            cast(PCAMDataset, test_dataloader.dataset)._transform = transforms.Compose([to_tensor, normalize])
 
         heatmaps, labels_pred = explain_model(
             explanation_method_name, model_name, test_dataloader, device, batch_size, num_images
         )
 
-        if model_name == "vit":
-            # Cast the heatmaps back to [b, 96, 96].
-            print(f"{heatmaps.shape=}")
-            transform = transforms.Compose(
-                [transforms.ToPILImage(), transforms.Resize((96, 96)), transforms.ToTensor()]
+        # Cast the heatmaps back to [b, 96, 96] if we resized the images.
+        cast(PCAMDataset, test_dataloader.dataset)._transform = transforms.Compose([to_tensor, normalize])
+        if model_name == "vit_b_16" or model_name == "inception_v3":
+            heatmaps = cast(
+                torch.Tensor,
+                transforms.Compose(
+                    [
+                        # Torch's type hint is not updated to their new API yet. The antialias
+                        # argument is now a bool instead of a string.
+                        transforms.Resize((96, 96), antialias=True)  # type: ignore
+                    ]
+                )(heatmaps),
             )
-            heatmaps = torch.concatenate([transform(h) for h in heatmaps])
-            print(f"{heatmaps.shape=}")
+            heatmaps /= heatmaps.sum(dim=(-2, -1), keepdims=True)  # type: ignore  # normalize to sum to 1
 
         # Append the results.
         heatmaps_models.append(heatmaps)
@@ -423,7 +469,7 @@ def display_matrix(
     scalar_mappable = get_scalar_mappable([0, 1], from_color="red", to_color="green")
 
     # Plot the matrices. Use a red-white-green colormap to show how similar the models' explanations are.
-    fig, ax = plt.subplots(1, 1, figsize=(3 + min(4, matrix.shape[1] * 0.5), 2 + min(4, matrix.shape[0] * 0.5)))
+    fig, ax = plt.subplots(1, 1, figsize=(3 + min(4, matrix.shape[1]), 2 + min(4, matrix.shape[0])))
     ax = cast(matplotlib.axes.Axes, ax)
 
     ax.imshow(matrix.T, cmap=scalar_mappable.get_cmap(), norm=scalar_mappable.norm)
@@ -542,7 +588,7 @@ def main(args: argparse.Namespace) -> None:
     logging.info(f"Using device: {device}")
 
     # Create the dataloader.
-    test_dataloader = init_dataloader(args.batch_size)
+    test_dataloader = init_dataloader(args.batch_size, args.num_workers)
     if args.num_images > len(test_dataloader):
         raise ValueError(f"Expected at most {len(test_dataloader)} images, got {args.num_images}")
 
@@ -552,10 +598,12 @@ def main(args: argparse.Namespace) -> None:
     )
 
     if args.plot_heatmaps:
+        # Don't normalize the image, since we want to plot the original image.
+        cast(PCAMDataset, test_dataloader.dataset)._transform = transforms.Compose([to_tensor])
         for i in range(args.num_images):
             plot_heatmaps(
                 test_dataloader.dataset[i][0],
-                test_dataloader.dataset[i][1].item(),
+                int(test_dataloader.dataset[i][1].item()),
                 heatmaps[0][i],
                 heatmaps[1][i],
                 args.models[0],
@@ -590,7 +638,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--models",
         type=str,
-        choices=["resnet34", "resnet50", "densenet121", "vit"],
+        choices=["resnet34", "resnet50", "densenet121", "vit_b_16", "inception_v3", "alexnet", "vgg11", "efficientnet"],
         nargs="+",
         required=True,
         help="The models to compare (must be at least 2).",
@@ -613,6 +661,12 @@ if __name__ == "__main__":
         type=int,
         default=100,
         help="The batch size to use when generating explanations."
+    )
+    parser.add_argument(
+        "--num_workers",
+        type=int,
+        default=8,
+        help="The number of workers to use when generating explanations."
     )
     parser.add_argument(
         "--plot_heatmaps",
