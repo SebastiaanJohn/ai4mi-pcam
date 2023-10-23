@@ -44,14 +44,17 @@ class PCAMSystem(pl.LightningModule):
         self.val_auc = AUROC(task="binary")
         self.test_auc = AUROC(task="binary")
 
-        self.best_acc = 0
-        self.best_auc = 0
-
     def model_step(self, batch: tuple[torch.Tensor, torch.Tensor]) -> tuple[float, torch.Tensor, torch.Tensor]:
         """Performs a single step on a batch of data."""
         img, targets = batch
-        targets = targets.float()
-        logits = self(img).squeeze(1)
+        output = self(img)
+
+        # The following code is needed to support Inception V3
+        if isinstance(output, tuple) and hasattr(output, "logits"):
+            logits = output.logits.squeeze()
+        else:
+            logits = output.squeeze()
+
         loss = self.criterion(logits, targets)
 
         return loss, logits, targets
@@ -69,9 +72,9 @@ class PCAMSystem(pl.LightningModule):
         self.train_auc(preds, targets)
 
         self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
-        self.log("train_acc", self.train_acc, on_step=True, on_epoch=False, prog_bar=True)
-        self.log("train_auc", self.train_auc, on_step=True, on_epoch=True, prog_bar=True)
-        self.log("lr", self.trainer.optimizers[0].param_groups[0]["lr"], on_step=True, on_epoch=False)
+        self.log("train_acc", self.train_acc, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("train_auc", self.train_auc, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("lr", self.trainer.optimizers[0].param_groups[0]["lr"], on_step=False, on_epoch=True)
 
         return loss
 
@@ -86,13 +89,6 @@ class PCAMSystem(pl.LightningModule):
         self.log("val_loss", loss, on_step=False, on_epoch=True, prog_bar=True)
         self.log("val_acc", self.val_acc, on_step=False, on_epoch=True, prog_bar=True)
         self.log("val_auc", self.val_auc, on_step=False, on_epoch=True, prog_bar=True)
-
-    def on_validation_epoch_end(self) -> None:
-        """Log the current learning rate at the end of the validation epoch."""
-        self.best_acc = max(self.val_acc.compute(), self.best_acc if hasattr(self, "best_acc") else 0)
-        self.best_auc = max(self.val_auc.compute(), self.best_auc if hasattr(self, "best_auc") else 0)
-        self.log("val_best_acc", self.best_acc, on_step=False, on_epoch=True, prog_bar=True)
-        self.log("val_best_auc", self.best_auc, on_step=False, on_epoch=True, prog_bar=True)
 
     def test_step(self, batch: tuple[torch.Tensor, torch.Tensor], batch_idx: int) -> None:
         """Return the loss for a test step."""
@@ -133,13 +129,13 @@ class PCAMSystem(pl.LightningModule):
             error_msg = f'Unknown optimizer: "{self.hparams.optimizer_name}"'
             raise AssertionError(error_msg)
 
-        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="max", factor=0.1, patience=2, verbose=True)
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=2, verbose=True)
 
         return {
             "optimizer": optimizer,
             "lr_scheduler": {
                 "scheduler": scheduler,
-                "monitor": "val_auc",
+                "monitor": "val_loss",
             },
         }
 

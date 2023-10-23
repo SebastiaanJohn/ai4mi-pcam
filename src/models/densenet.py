@@ -4,9 +4,16 @@ import torch.nn as nn
 from torchvision import models
 
 
-def get_densenet(version: str, freeze: bool = False, num_classes: int = 2) -> nn.Module:
+def get_densenet(
+        version: str,
+        pretrained: bool = True,
+        freeze: bool = False,
+        num_classes: int = 1,
+    ) -> nn.Module:
     """Returns a DenseNet model with a custom classifier."""
-    model = getattr(models, f"densenet{version}")()
+    weights = "IMAGENET1K_V1" if pretrained and version == "121" else None
+
+    model = getattr(models, f"densenet{version}")(weights=weights)
 
     if freeze:
         for param in model.parameters():

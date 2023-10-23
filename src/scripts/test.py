@@ -6,9 +6,10 @@ from argparse import ArgumentParser
 import lightning.pytorch as pl
 from lightning.pytorch.loggers import TensorBoardLogger
 from loguru import logger
+from torchvision import transforms
 
 from src.config import settings
-from src.datasets.PCAM import PCAMDataModule
+from src.datasets.pcam import PCAMDataModule
 from src.engines.system import PCAMSystem
 from src.utils.callbacks import Callbacks
 from src.utils.helpers import get_model_at_version
@@ -31,14 +32,21 @@ def test(args) -> None:
 
     # Instantiate the data module
     data_module = PCAMDataModule(
-        data_dir=settings.raw_data_dir,
-        lazy_loading=args.lazy_loading,
-        crop_center=args.crop_center,
+        data_dir=settings.processed_data_dir / "pcam",
+        batch_size=args.batch_size,
+        num_workers=args.num_workers,
+        transforms=transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+        ]),
     )
 
     # Instantiate the model
     checkpoint_path = get_model_at_version(args.model, args.version)
-    system = PCAMSystem.load_from_checkpoint(checkpoint_path)
+    try:
+        system = PCAMSystem.load_from_checkpoint(checkpoint_path)
+    except RuntimeError:
+        system = PCAMSystem.load_from_checkpoint(checkpoint_path, map_location="cpu")
 
     # Instantiate the trainer
     trainer = pl.Trainer(
@@ -61,12 +69,7 @@ if __name__ == "__main__":
     # Dataset
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--num_workers", type=int, default=8)
-    parser.add_argument("--lazy_loading", type=bool, default=True)
-    parser.add_argument("--crop_center", action="store_true")
     parser.add_argument("--val_size", type=float, default=None, help="Fraction of the validation set to use.")
-
-    # Logging
-    parser.add_argument("--wandb", type=bool, default=False)
 
     # Debugging
     parser.add_argument("--debug", action="store_true")

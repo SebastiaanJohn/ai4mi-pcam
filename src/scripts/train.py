@@ -4,12 +4,12 @@ import sys
 from argparse import ArgumentParser
 
 import lightning.pytorch as pl
-import wandb
 from lightning.pytorch.loggers import TensorBoardLogger, WandbLogger
 from loguru import logger
+from torchvision import transforms
 
 from src.config import settings
-from src.datasets.PCAM import PCAMDataModule
+from src.datasets.pcam import PCAMDataModule
 from src.engines.system import PCAMSystem
 from src.utils.callbacks import Callbacks
 
@@ -40,9 +40,15 @@ def train(args) -> None:
 
     # Instantiate the data module
     data_module = PCAMDataModule(
-        data_dir=settings.raw_data_dir,
-        lazy_loading=args.lazy_loading,
-        crop_center=args.crop_center,
+        data_dir=settings.processed_data_dir / "pcam",
+        batch_size=args.batch_size,
+        num_workers=args.num_workers,
+        transforms=transforms.Compose([
+            # transforms.Resize((224, 224)), uncomment this line for ViT_b_16
+            # transforms.Resize((299, 299)),  uncomment this line for Inception V3
+            transforms.ToTensor(),
+            transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+        ]),
     )
 
     # Parameters
@@ -78,8 +84,6 @@ def train(args) -> None:
     # Start the training process
     trainer.fit(model=system, datamodule=data_module)
 
-    if args.wandb:
-        wandb.finish()
 
 if __name__ == "__main__":
     parser = ArgumentParser()
@@ -87,8 +91,6 @@ if __name__ == "__main__":
     # Dataset
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--num_workers", type=int, default=8)
-    parser.add_argument("--lazy_loading", type=bool, default=True)
-    parser.add_argument("--crop_center", action="store_true")
     parser.add_argument("--train_size", type=float, default=None, help="Fraction of the training set to use.")
     parser.add_argument("--val_size", type=float, default=None, help="Fraction of the validation set to use.")
 
@@ -97,6 +99,7 @@ if __name__ == "__main__":
     parser.add_argument("--compile_model", action="store_true")
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--weight_decay", type=float, default=1e-4)
+    parser.add_argument("--pretrained", action="store_true")
     parser.add_argument("--freeze", action="store_true")
 
     # Training

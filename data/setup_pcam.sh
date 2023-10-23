@@ -4,7 +4,7 @@
 # annotations. When running this script, your cwd should be the root of the
 # project. Run this script from the command line as `./data/setup_pcam.sh`.
 
-raw_dir="./data/raw"
+raw_dir="./data/processed/pcam"
 
 # Download the raw dataset annotations.
 wget 'https://drive.google.com/uc?export=download&id=1bH8ZRbhSVAhScTS0p9-ZzGnX91cHT3uO&confirm=t' -O "${raw_dir}/camelyonpatch_level_2_split_test_y.h5.gz"
