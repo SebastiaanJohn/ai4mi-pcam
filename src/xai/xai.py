@@ -3,7 +3,7 @@ import logging
 from collections.abc import Callable, Sequence
 from math import ceil
 from pathlib import Path
-from typing import Generic, TypeAlias, TypeVar, cast
+from typing import Generic, Literal, TypeAlias, TypeVar, cast
 
 import matplotlib
 import matplotlib.axes
@@ -113,13 +113,21 @@ def load_model(model_name: str) -> nn.Module:
     model.eval()
 
     MODEL_PATHS = {
-        # "resnet34": "./models/ResNet34/best-loss-model-epoch=02-val_loss=0.38.ckpt",  # with norm, init imagenet, trained last layer
+        "resnet34": (
+            "./models/ResNet34/best-loss-model-epoch=02-val_loss=0.38.ckpt"
+        ),  # with norm, init imagenet, trained last layer
         # "resnet34": "./models/ResNet34/best-loss-model-epoch=00-val_loss=0.44.ckpt",  # without norm, init imagenet, trained last layer
         # "resnet34": "./models/ResNet34/best-loss-model-epoch=00-val_loss=0.40.ckpt",  # without norm, init random, trained all layers, old
         # "resnet34": "./models/ResNet34/best-loss-model-epoch=00-val_loss=0.36.ckpt",  # without norm, init random, trained all layers, new
-        "resnet34": "./models/ResNet34/best-loss-model-epoch=00-val_loss=0.39.ckpt",  # without norm, init imagenet, trained all layers
-        # "resnet50": "./models/ResNet50/best-loss-model-epoch=00-val_loss=0.43.ckpt",  # without norm, init imagenet, trained last layer
-        "resnet50": "./models/ResNet50/best-loss-model-epoch=00-val_loss=0.83.ckpt",  # no one knows how this one was trained
+        # "resnet34": (
+        #     "./models/ResNet34/best-loss-model-epoch=00-val_loss=0.39.ckpt"
+        # ),  # without norm, init imagenet, trained all layers
+        "resnet50": (
+            "./models/ResNet50/best-loss-model-epoch=00-val_loss=0.43.ckpt"
+        ),  # without norm, init imagenet, trained last layer
+        # "resnet50": (
+        #     "./models/ResNet50/best-loss-model-epoch=00-val_loss=0.83.ckpt"
+        # ),  # no one knows how this one was trained
         "densenet121": "./models/DenseNet121/best-loss-model-epoch=04-val_loss=0.39.ckpt",
         "vit_b_16": "./models/ViT_b_16/best-loss-model-epoch=03-val_loss=0.33.ckpt",
         "inception_v3": "./models/Inception_V3/best-loss-model-epoch=09-val_loss=0.38.ckpt",
@@ -350,7 +358,7 @@ def weighted_iou(heatmaps1: torch.Tensor, heatmaps2: torch.Tensor) -> torch.Tens
         iou: The weighted IoU for each pair of heatmaps.
             Shape: [*]
     """
-    # Calculate the intersection and union for each pair of heatmaps.
+    # Calculate the weighted intersection and union for each pair of heatmaps.
     intersections = torch.sum(torch.min(heatmaps1, heatmaps2), dim=(-2, -1))
     unions = torch.sum(torch.max(heatmaps1, heatmaps2), dim=(-2, -1))
 
@@ -358,7 +366,54 @@ def weighted_iou(heatmaps1: torch.Tensor, heatmaps2: torch.Tensor) -> torch.Tens
     return intersections / unions
 
 
-def calculate_agreement(heatmaps: list[torch.Tensor]) -> np.ndarray:
+def threshold_heatmaps(heatmaps: torch.Tensor) -> torch.Tensor:
+    """Discretize the heatmaps by setting the highest X% of pixels to 1, the rest to 0.
+
+    Args:
+        heatmaps: The heatmaps to threshold.
+            Shape: [*, height, width]
+
+    Returns:
+        thresholded_heatmaps: The thresholded heatmaps.
+            Shape: [*, height, width]
+    """
+    # Set the highest X% of pixels to 1, the rest to 0.
+    threshold = 0.25
+    return heatmaps > torch.quantile(
+        cast(torch.Tensor, heatmaps.view(*heatmaps.shape[:-2], heatmaps.shape[-2] * heatmaps.shape[-1])),
+        1 - threshold,
+        dim=-1,
+    ).unsqueeze(-1).unsqueeze(-1)
+
+
+def thresholded_iou(heatmaps1: torch.Tensor, heatmaps2: torch.Tensor) -> torch.Tensor:
+    """Calculate the thresholded IoU between two sets of heatmaps.
+
+    Args:
+        heatmaps1: The first set of heatmaps.
+            Shape: [*, height, width]
+        heatmaps2: The second set of heatmaps.
+            Shape: [*, height, width]
+
+    Returns:
+        iou: The thresholded IoU for each pair of heatmaps.
+            Shape: [*]
+    """
+    # Set the highest 1/4 of pixels to 1, the rest to 0.
+    heatmaps1 = threshold_heatmaps(heatmaps1)
+    heatmaps2 = threshold_heatmaps(heatmaps2)
+
+    # Calculate the discrete intersection and union for each pair of heatmaps.
+    intersections = torch.sum(heatmaps1 & heatmaps2, dim=(-2, -1))
+    unions = torch.sum(heatmaps1 | heatmaps2, dim=(-2, -1))
+
+    # Calculate the thresholded IoU.
+    return intersections / unions
+
+
+def calculate_agreement(
+    heatmaps: list[torch.Tensor], similarity_measure: Literal["weighted_iou", "thresholded_iou"]
+) -> np.ndarray:
     """Calculate the agreement between each pair of models.
 
     Note: The "agreement" is defined as the average weighted IoU between the heatmaps.
@@ -367,7 +422,8 @@ def calculate_agreement(heatmaps: list[torch.Tensor]) -> np.ndarray:
         heatmaps: List of heatmaps.
             Length: num_models
             Shape of Tensors: [num_images, height, width]
-        model_names: List of model names.
+        similarity_measure: The similarity measure to use to calculate how much a pair of models agrees.
+            Either "weighted_iou" or "thresholded_iou".
 
     Returns:
         agreement_table: The similarity table.
@@ -378,7 +434,8 @@ def calculate_agreement(heatmaps: list[torch.Tensor]) -> np.ndarray:
     for i in range(len(heatmaps)):
         agreement_table[i, i] = 1.0
         for j in range(i + 1, len(heatmaps)):
-            agreement_table[i, j] = torch.mean(weighted_iou(heatmaps[i], heatmaps[j])).item()
+            similarity_function = weighted_iou if similarity_measure == "weighted_iou" else thresholded_iou
+            agreement_table[i, j] = torch.mean(similarity_function(heatmaps[i], heatmaps[j])).item()
             agreement_table[j, i] = agreement_table[i, j]
 
     return agreement_table
@@ -523,7 +580,9 @@ def plot_heatmaps(
     model_name2: str,
     pred_label1: int,
     pred_label2: int,
+    img_idx: int,
     explanation_method_name: str,
+    similarity_measure: Literal["weighted_iou", "thresholded_iou"],
 ) -> None:
     """Plot the heatmap of the given image.
 
@@ -539,32 +598,44 @@ def plot_heatmaps(
         model_name2: Name of the second model.
         pred_label1: Predicted label for the first model.
         pred_label2: Predicted label for the second model.
+        img_idx: The index of the image.
         explanation_method_name: The name of the explanation method.
+        similarity_measure: The similarity measure to use to calculate how much a pair of models agrees.
     """
     img = torch.permute(img, (1, 2, 0))  # c x h x w -> h x w x c
 
     fig, axs = plt.subplots(1, 5, figsize=(21, 4))
     axs = cast(NDArrayGeneric[matplotlib.axes.Axes], axs)
-    title = f"{explanation_method_name.replace('_', ' ').capitalize()}"  # , Image #{i + 1}"
-    fig.suptitle(f"{title}, IoU = {weighted_iou(heatmap1, heatmap2).item():.2f}", fontsize=20)
+    title = f"{explanation_method_name.replace('_', ' ').capitalize()}, Image #{img_idx + 1}"
+    similarity_function = weighted_iou if similarity_measure == "weighted_iou" else thresholded_iou
+    fig.suptitle(f"{title}, IoU = {similarity_function(heatmap1, heatmap2).item():.2f}", fontsize=20)
 
     vmax = max(torch.max(heatmap1).item(), torch.max(heatmap2).item())
     sm = matplotlib.cm.ScalarMappable(norm=matplotlib.colors.Normalize(vmin=0, vmax=vmax), cmap="hot")
+
+    heatmap_type = "Heatmap" if similarity_measure == "weighted_iou" else "Mask"
+    heatmap1 = heatmap1 if similarity_measure == "weighted_iou" else threshold_heatmaps(heatmap1)
+    heatmap2 = heatmap2 if similarity_measure == "weighted_iou" else threshold_heatmaps(heatmap2)
+
     axs[0].imshow(img, cmap=sm.get_cmap(), norm=sm.norm)
-    axs[0].axis("off")
     axs[0].set_title(f"Original image (gt label: {gt_label})")
+    axs[0].axis("off")
+
     axs[1].imshow(heatmap1, cmap=sm.get_cmap(), norm=sm.norm)
+    axs[1].set_title(f"{heatmap_type} of {model_name1} (pred label: {pred_label1})")
     axs[1].axis("off")
-    axs[1].set_title(f"Heatmap of {model_name1} (pred label: {pred_label1})")
+
     axs[2].imshow(heatmap2, cmap=sm.get_cmap(), norm=sm.norm)
+    axs[2].set_title(f"{heatmap_type} of {model_name2} (pred label: {pred_label2})")
     axs[2].axis("off")
-    axs[2].set_title(f"Heatmap of {model_name2} (pred label: {pred_label2})")
+
     axs[3].imshow(torch.min(heatmap1, heatmap2), cmap=sm.get_cmap(), norm=sm.norm)
-    axs[3].axis("off")
     axs[3].set_title("Intersection")
+    axs[3].axis("off")
+
     axs[4].imshow(torch.max(heatmap1, heatmap2), cmap=sm.get_cmap(), norm=sm.norm)
-    axs[4].axis("off")
     axs[4].set_title("Union")
+    axs[4].axis("off")
 
     fig.colorbar(sm, ax=axs[-1])
     plt.tight_layout()
@@ -600,21 +671,23 @@ def main(args: argparse.Namespace) -> None:
     if args.plot_heatmaps:
         # Don't normalize the image, since we want to plot the original image.
         cast(PCAMDataset, test_dataloader.dataset)._transform = transforms.Compose([to_tensor])
-        for i in range(args.num_images):
+        for img_idx in range(args.num_images):
             plot_heatmaps(
-                test_dataloader.dataset[i][0],
-                int(test_dataloader.dataset[i][1].item()),
-                heatmaps[0][i],
-                heatmaps[1][i],
+                test_dataloader.dataset[img_idx][0],
+                int(test_dataloader.dataset[img_idx][1].item()),
+                heatmaps[0][img_idx],
+                heatmaps[1][img_idx],
                 args.models[0],
                 args.models[1],
-                int(labels_pred[0][i].item()),
-                int(labels_pred[1][i].item()),
+                int(labels_pred[0][img_idx].item()),
+                int(labels_pred[1][img_idx].item()),
+                img_idx,
                 args.explanation,
+                args.similarity_measure,
             )
     else:
         # Calculate the agreement between each pair of models.
-        agreement_table = calculate_agreement(heatmaps)
+        agreement_table = calculate_agreement(heatmaps, args.similarity_measure)
 
         # Visualize the agreement table.
         visualize_agreement_table(agreement_table, args.explanation, args.models)
@@ -649,6 +722,13 @@ if __name__ == "__main__":
         choices=["saliency_mapping", "integrated_gradients", "lime"],
         required=True,
         help="The explanation method to use for generating heatmaps.",
+    )
+    parser.add_argument(
+        "--similarity_measure",
+        type=str,
+        choices=["weighted_iou", "thresholded_iou"],
+        default="weighted_iou",
+        help="The similarity measure to use to calculate how much a pair of models agrees.",
     )
     parser.add_argument(
         "--num_images",
