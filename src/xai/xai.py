@@ -547,7 +547,10 @@ def display_matrix(
 
 
 def visualize_agreement_table(
-    agreement_table: np.ndarray, explanation_method_name: str, model_names: list[str]
+    agreement_table: np.ndarray,
+    explanation_method_name: str,
+    model_names: list[str],
+    similarity_measure: Literal["weighted_iou", "thresholded_iou"],
 ) -> None:
     """Visualize the agreement table.
 
@@ -558,10 +561,11 @@ def visualize_agreement_table(
         model_names: List of model names.
             Length: num_models
     """
-    title = f"{explanation_method_name.replace('_', ' ').capitalize()}"  # , Image #{i + 1}"
+    title = f"{explanation_method_name.replace('_', ' ').capitalize()}"
+    sim_name = "Weighted IoU" if similarity_measure == "weighted_iou" else "Thresholded IoU"
     display_matrix(
         agreement_table,
-        f"{title}\nAgreement between models\n(Mean Weighted IoU)",
+        f"{title}\nAgreement between models\n(Mean {sim_name})",
         "Model 1",
         "Model 2",
         np.arange(len(model_names)),
@@ -690,7 +694,7 @@ def main(args: argparse.Namespace) -> None:
         agreement_table = calculate_agreement(heatmaps, args.similarity_measure)
 
         # Visualize the agreement table.
-        visualize_agreement_table(agreement_table, args.explanation, args.models)
+        visualize_agreement_table(agreement_table, args.explanation, args.models, args.similarity_measure)
 
 
 if __name__ == "__main__":
@@ -745,7 +749,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--num_workers",
         type=int,
-        default=8,
+        default=1,
         help="The number of workers to use when generating explanations."
     )
     parser.add_argument(
