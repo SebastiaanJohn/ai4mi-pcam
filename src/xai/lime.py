@@ -184,7 +184,9 @@ def train_linear_model(
         coefficients: Coefficients of the linear model.
             Shape: [num_superpixels]
     """
-    model = LinearRegression().fit(perturbations, probs_pred[:, label_target], weights)
+    model = LinearRegression().fit(
+        perturbations.cpu().numpy(), probs_pred[:, label_target].cpu().numpy(), weights.cpu().numpy()
+    )
     return torch.from_numpy(model.coef_).to(device)
 
 
