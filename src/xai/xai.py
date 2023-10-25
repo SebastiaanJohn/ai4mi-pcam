@@ -178,6 +178,8 @@ def explain_model(
         # If the results for this model have already been calculated, retrieve the cache.
         logging.info(f"Loading cache for {model_name}...")
         heatmaps, labels_pred = torch.load(cache_path)
+        for i, heatmaps_model in enumerate(heatmaps):
+            heatmaps[i] = heatmaps_model.to(device)
         start_at = sum(len(l) for l in labels_pred)
         logging.info(f"Number of results loaded: {start_at}")
         if start_at >= num_images:
@@ -693,6 +695,8 @@ def main(args: argparse.Namespace) -> None:
     heatmaps, labels_pred = explain_models(
         args.explanation, args.models, test_dataloader, device, args.batch_size, args.num_images
     )
+    for i, heatmaps_model in enumerate(heatmaps):
+        heatmaps[i] = heatmaps_model.cpu()
 
     # Calculate and print the specificity of the heatmaps for each model.
     maxs = calculate_heatmaps_max(heatmaps)

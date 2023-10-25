@@ -246,7 +246,7 @@ def lime_helper(
     # Generate segmentation maps.
     all_segmap = [
         generate_segmentation_map(img, device, segmap_ratio, segmap_kernel_size, segmap_max_dist)
-        for img in imgs_preprocessed
+        for img in imgs_preprocessed.cpu()  # skimage.segmentation.quickshift only supports CPU
     ]
     all_num_superpixels = [segmap.unique(sorted=False).shape[0] for segmap in all_segmap]
 
@@ -297,6 +297,4 @@ def lime(imgs_preprocessed: torch.Tensor, model: nn.Module) -> tuple[torch.Tenso
         labels_pred: Predicted labels.
             Shape: [batch_size]
     """
-    
-
     return lime_helper(imgs_preprocessed, model)
