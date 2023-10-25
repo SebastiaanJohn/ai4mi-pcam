@@ -632,7 +632,7 @@ def plot_heatmaps(
 
     fig, axs = plt.subplots(1, 5, figsize=(21, 4))
     axs = cast(NDArrayGeneric[matplotlib.axes.Axes], axs)
-    title = f"{explanation_method_name.replace('_', ' ').capitalize()}, Image #{img_idx + 1}"
+    title = f"{explanation_method_name.replace('_', ' ').capitalize()}"  # , Image #{img_idx + 1}"
     similarity_function = weighted_iou if similarity_measure == "weighted_iou" else thresholded_iou
     fig.suptitle(f"{title}, IoU = {similarity_function(heatmap1, heatmap2).item():.2f}", fontsize=20)
 
@@ -640,8 +640,6 @@ def plot_heatmaps(
     sm = matplotlib.cm.ScalarMappable(norm=matplotlib.colors.Normalize(vmin=0, vmax=vmax), cmap="hot")
 
     heatmap_type = "Heatmap" if similarity_measure == "weighted_iou" else "Mask"
-    heatmap1 = heatmap1 if similarity_measure == "weighted_iou" else threshold_heatmaps(heatmap1)
-    heatmap2 = heatmap2 if similarity_measure == "weighted_iou" else threshold_heatmaps(heatmap2)
 
     axs[0].imshow(img, cmap=sm.get_cmap(), norm=sm.norm)
     axs[0].set_title(f"Original image (gt label: {gt_label})")
@@ -659,15 +657,17 @@ def plot_heatmaps(
     )
     axs[2].axis("off")
 
-    axs[3].imshow(torch.min(heatmap1, heatmap2), cmap=sm.get_cmap(), norm=sm.norm)
+    heatmap1 = heatmap1 if similarity_measure == "weighted_iou" else threshold_heatmaps(heatmap1)
+    heatmap2 = heatmap2 if similarity_measure == "weighted_iou" else threshold_heatmaps(heatmap2)
+    axs[3].imshow(torch.min(heatmap1, heatmap2), cmap=sm.get_cmap() if similarity_measure == "weighted_iou" else "gray")
     axs[3].set_title("Intersection")
     axs[3].axis("off")
 
-    axs[4].imshow(torch.max(heatmap1, heatmap2), cmap=sm.get_cmap(), norm=sm.norm)
+    axs[4].imshow(torch.max(heatmap1, heatmap2), cmap=sm.get_cmap() if similarity_measure == "weighted_iou" else "gray")
     axs[4].set_title("Union")
     axs[4].axis("off")
 
-    fig.colorbar(sm, ax=axs[-1])
+    fig.colorbar(sm, ax=axs[4] if similarity_measure == "weighted_iou" else axs[2])
     plt.tight_layout()
     plt.show()
 
