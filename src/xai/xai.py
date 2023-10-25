@@ -177,9 +177,7 @@ def explain_model(
     if cache_path.exists():
         # If the results for this model have already been calculated, retrieve the cache.
         logging.info(f"Loading cache for {model_name}...")
-        heatmaps, labels_pred = torch.load(cache_path)
-        for i, heatmaps_model in enumerate(heatmaps):
-            heatmaps[i] = heatmaps_model.to(device)
+        heatmaps, labels_pred = torch.load(cache_path, map_location=device)
         start_at = sum(len(l) for l in labels_pred)
         logging.info(f"Number of results loaded: {start_at}")
         if start_at >= num_images:
@@ -365,7 +363,7 @@ def threshold_heatmaps(heatmaps: torch.Tensor) -> torch.Tensor:
     """
     # Set the highest X% of pixels to 1, the rest to 0.
     threshold = 0.25
-    return heatmaps > torch.quantile(
+    return heatmaps >= torch.quantile(
         cast(torch.Tensor, heatmaps.view(*heatmaps.shape[:-2], heatmaps.shape[-2] * heatmaps.shape[-1])),
         1 - threshold,
         dim=-1,
@@ -650,11 +648,15 @@ def plot_heatmaps(
     axs[0].axis("off")
 
     axs[1].imshow(heatmap1, cmap=sm.get_cmap(), norm=sm.norm)
-    axs[1].set_title(f"{heatmap_type} of {model_name1}\n(pred label: {pred_label1}, stddev: {torch.std(heatmap1):.3f})")
+    axs[1].set_title(
+        f"{heatmap_type} of {model_name1}\n(pred label: {pred_label1}, stddev: {torch.std(heatmap1.float()):.3f})"
+    )
     axs[1].axis("off")
 
     axs[2].imshow(heatmap2, cmap=sm.get_cmap(), norm=sm.norm)
-    axs[2].set_title(f"{heatmap_type} of {model_name2}\n(pred label: {pred_label2}, stddev: {torch.std(heatmap2):.3f})")
+    axs[2].set_title(
+        f"{heatmap_type} of {model_name2}\n(pred label: {pred_label2}, stddev: {torch.std(heatmap2.float()):.3f})"
+    )
     axs[2].axis("off")
 
     axs[3].imshow(torch.min(heatmap1, heatmap2), cmap=sm.get_cmap(), norm=sm.norm)
