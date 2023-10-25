@@ -29,14 +29,8 @@ ExplanationMethod: TypeAlias = Callable[[torch.Tensor, nn.Module], tuple[torch.T
 DType = TypeVar("DType")
 
 
-class NoOpTransform:
-    def __call__(self, sample):
-        return sample
-
-
 to_tensor = transforms.ToTensor()
-normalize = NoOpTransform()
-# normalize = transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+normalize = transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
 
 
 class NDArrayGeneric(np.ndarray, Generic[DType]):
@@ -113,21 +107,8 @@ def load_model(model_name: str) -> nn.Module:
     model.eval()
 
     MODEL_PATHS = {
-        "resnet34": (
-            "./models/ResNet34/best-loss-model-epoch=02-val_loss=0.38.ckpt"
-        ),  # with norm, init imagenet, trained last layer
-        # "resnet34": "./models/ResNet34/best-loss-model-epoch=00-val_loss=0.44.ckpt",  # without norm, init imagenet, trained last layer
-        # "resnet34": "./models/ResNet34/best-loss-model-epoch=00-val_loss=0.40.ckpt",  # without norm, init random, trained all layers, old
-        # "resnet34": "./models/ResNet34/best-loss-model-epoch=00-val_loss=0.36.ckpt",  # without norm, init random, trained all layers, new
-        # "resnet34": (
-        #     "./models/ResNet34/best-loss-model-epoch=00-val_loss=0.39.ckpt"
-        # ),  # without norm, init imagenet, trained all layers
-        "resnet50": (
-            "./models/ResNet50/best-loss-model-epoch=00-val_loss=0.43.ckpt"
-        ),  # without norm, init imagenet, trained last layer
-        # "resnet50": (
-        #     "./models/ResNet50/best-loss-model-epoch=00-val_loss=0.83.ckpt"
-        # ),  # no one knows how this one was trained
+        "resnet34": "./models/ResNet34/best-loss-model-epoch=00-val_loss=0.29.ckpt",
+        "resnet50": "./models/ResNet50/best-loss-model-epoch=00-val_loss=0.43.ckpt",
         "densenet121": "./models/DenseNet121/best-loss-model-epoch=04-val_loss=0.39.ckpt",
         "vit_b_16": "./models/ViT_b_16/best-loss-model-epoch=03-val_loss=0.33.ckpt",
         "inception_v3": "./models/Inception_V3/best-loss-model-epoch=09-val_loss=0.38.ckpt",
@@ -190,10 +171,6 @@ def explain_model(
     # Select the explanation method.
     explanation_method = select_explanation_method(explanation_method_name)
 
-    # Load the model.
-    model = load_model(model_name)
-    model = model.to(device)
-
     # Determine where the results should be cached.
     cache_path = Path(f"./data/results/{explanation_method_name}_{model_name}.pt")
 
@@ -213,12 +190,12 @@ def explain_model(
         labels_pred = []
         start_at = 0
 
+    # Load the model.
+    model = load_model(model_name)
+    model = model.to(device)
+
     # Now calculate the rest of the results.
     logging.info(f"Calculating heatmaps for {model_name}...")
-    logging.info("NOTE: Intermediate results are automatically")
-    logging.info("      saved to disk after every batch. You can")
-    logging.info("      stop the calculation at any time, and the")
-    logging.info("      program will resume from where it left off.")
 
     idx = 0
     for batch_idx, (imgs_preprocessed_batch, _) in enumerate(test_dataloader):
@@ -253,6 +230,7 @@ def explain_model(
         heatmaps_max = torch.max(heatmaps_agg, dim=-1).values.reshape(-1, 1, 1)
         heatmaps_batch = (heatmaps_batch - heatmaps_min) / (heatmaps_max - heatmaps_min)  # normalize to [0, 1]
         heatmaps_batch /= heatmaps_batch.sum(dim=(-2, -1), keepdims=True)  # type: ignore  # normalize to sum to 1
+        heatmaps_batch *= 96 * 96  # normalize to sum to 96*96 so that the average pixel value is always 1
 
         # Append the batches.
         heatmaps.append(heatmaps_batch)
@@ -287,13 +265,18 @@ def explain_models(
 
     Returns:
         Tuple containing:
-            heatmaps: Heatmaps signifying what the model looks at.
+            heatmaps: List of heatmaps signifying what the model looks at.
                 Length: num_models
                 Shape of inner Tensors: [num_images, height, width]
-            labels_pred: Predicted labels.
+            labels_pred: List of predicted labels.
                 Length: num_models
                 Shape of inner Tensors: [num_images]
     """
+    logging.info("NOTE: Intermediate results are automatically")
+    logging.info("      saved to disk after every batch. You can")
+    logging.info("      stop the calculation at any time, and the")
+    logging.info("      program will resume from where it left off.")
+
     # Calculate and cache the heatmaps for each model.
     heatmaps_models = []
     labels_pred_models = []
@@ -337,6 +320,7 @@ def explain_models(
                 )(heatmaps),
             )
             heatmaps /= heatmaps.sum(dim=(-2, -1), keepdims=True)  # type: ignore  # normalize to sum to 1
+            heatmaps *= 96 * 96  # normalize to sum to 96*96 so that the average pixel value is always 1
 
         # Append the results.
         heatmaps_models.append(heatmaps)
@@ -399,7 +383,7 @@ def thresholded_iou(heatmaps1: torch.Tensor, heatmaps2: torch.Tensor) -> torch.T
         iou: The thresholded IoU for each pair of heatmaps.
             Shape: [*]
     """
-    # Set the highest 1/4 of pixels to 1, the rest to 0.
+    # Set the highest X% of pixels to 1, the rest to 0.
     heatmaps1 = threshold_heatmaps(heatmaps1)
     heatmaps2 = threshold_heatmaps(heatmaps2)
 
@@ -439,6 +423,44 @@ def calculate_agreement(
             agreement_table[j, i] = agreement_table[i, j]
 
     return agreement_table
+
+
+def calculate_heatmaps_max(heatmaps: list[torch.Tensor]) -> list[float]:
+    """Calculate the average of the max pixel in each heatmap.
+
+    Args:
+        heatmaps: List of heatmaps.
+            Length: num_models
+            Shape of Tensors: [num_images, height, width]
+
+    Returns:
+        maxs: The average of the max pixel in each heatmap.
+            Length: num_models
+    """
+    maxs = []
+    for heatmaps_model in heatmaps:
+        specificity_model = torch.max(heatmaps_model.reshape(heatmaps_model.shape[0], -1), dim=-1).values.mean().item()
+        maxs.append(specificity_model)
+    return maxs
+
+
+def calculate_heatmaps_stddev(heatmaps: list[torch.Tensor]) -> list[float]:
+    """Calculate the standard deviation of the pixels in each heatmap.
+
+    Args:
+        heatmaps: List of heatmaps.
+            Length: num_models
+            Shape of Tensors: [num_images, height, width]
+
+    Returns:
+        stddevs: The standard deviation of the pixels in each heatmap.
+            Length: num_models
+    """
+    stddevs = []
+    for heatmaps_model in heatmaps:
+        specificity_model = torch.std(heatmaps_model, dim=(-2, -1)).mean().item()
+        stddevs.append(specificity_model)
+    return stddevs
 
 
 def get_scalar_mappable(
@@ -626,11 +648,11 @@ def plot_heatmaps(
     axs[0].axis("off")
 
     axs[1].imshow(heatmap1, cmap=sm.get_cmap(), norm=sm.norm)
-    axs[1].set_title(f"{heatmap_type} of {model_name1} (pred label: {pred_label1})")
+    axs[1].set_title(f"{heatmap_type} of {model_name1}\n(pred label: {pred_label1}, stddev: {torch.std(heatmap1):.3f})")
     axs[1].axis("off")
 
     axs[2].imshow(heatmap2, cmap=sm.get_cmap(), norm=sm.norm)
-    axs[2].set_title(f"{heatmap_type} of {model_name2} (pred label: {pred_label2})")
+    axs[2].set_title(f"{heatmap_type} of {model_name2}\n(pred label: {pred_label2}, stddev: {torch.std(heatmap2):.3f})")
     axs[2].axis("off")
 
     axs[3].imshow(torch.min(heatmap1, heatmap2), cmap=sm.get_cmap(), norm=sm.norm)
@@ -671,6 +693,20 @@ def main(args: argparse.Namespace) -> None:
     heatmaps, labels_pred = explain_models(
         args.explanation, args.models, test_dataloader, device, args.batch_size, args.num_images
     )
+
+    # Calculate and print the specificity of the heatmaps for each model.
+    maxs = calculate_heatmaps_max(heatmaps)
+    stddevs = calculate_heatmaps_stddev(heatmaps)
+    max_model_name_length = max(map(len, args.models)) + 1
+    logging.info(" HEATMAP SPECIFICITY ".center(66, "-"))
+    for model_name, stddev_model, max_model in sorted(
+        zip(args.models, stddevs, maxs), key=lambda x: x[1], reverse=True
+    ):
+        logging.info(
+            f"(stddev, max) of {model_name}{' ' * (max_model_name_length - len(model_name))}: "
+            f"({stddev_model:>5.3f}, {max_model:>6.3f})"
+        )
+    logging.info("-" * 66)
 
     if args.plot_heatmaps:
         # Don't normalize the image, since we want to plot the original image.

@@ -81,7 +81,7 @@ def integrated_gradients(imgs_preprocessed: torch.Tensor, model: nn.Module) -> t
 
     for i in tqdm(range(len(imgs_preprocessed)), unit="image"):
         gradient, label_pred = integrated_gradients_helper(
-            imgs_preprocessed[i].unsqueeze(0), model, baselines_preprocessed
+            imgs_preprocessed[i].unsqueeze(0), model, baselines_preprocessed[i].unsqueeze(0)
         )
         gradients.append(gradient)
         labels_pred.append(label_pred)
