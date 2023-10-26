@@ -80,6 +80,8 @@ python3 -m src.scripts.train --model resnet_34 --pretrained --freeze --batch_siz
 
 Run `python3 -m src.scripts.train --help` to see all possible arguments.
 
+The models we trained can be downloaded from [here](https://drive.google.com/drive/folders/1lYijb7mw1lnOqntwWt3dNgyCyu_NzpEB?usp=share_link). The models should be placed in the `models` folder under the respective model name, e.g. `models/ResNet34/_.ckpt`.
+
 Test the model with:
 
 ```bash
@@ -91,15 +93,13 @@ Run `python3 -m src.scripts.test --help` to see all possible arguments.
 Run the XAI methods with:
 
 ```bash
-python3 -m src.xai.xai --logging_level INFO --models resnet34 resnet50 densenet121 vit_b_16 alexnet vgg11 efficientnet --explanation saliency_mapping --similarity_measure thresholded_iou --num_images 128 --batch_size 8 --num_workers 1
+python3 -m src.xai.xai --logging_level INFO --models resnet34 resnet50 densenet121 vit_b_16 alexnet vgg11 efficientnet --explanation saliency_mapping --similarity_measure thresholded_iou --num_images 256 --batch_size 8 --num_workers 1
 ```
 
 ```bash
-python3 -m src.xai.xai --logging_level INFO --models resnet34 resnet50 densenet121 vit_b_16 alexnet vgg11 efficientnet --explanation integrated_gradients --similarity_measure thresholded_iou --num_images 128 --batch_size 8 --num_workers 1
+python3 -m src.xai.xai --logging_level INFO --models resnet34 resnet50 densenet121 vit_b_16 alexnet vgg11 efficientnet --explanation integrated_gradients --similarity_measure thresholded_iou --num_images 256 --batch_size 8 --num_workers 1
 ```
 
 ```bash
-python3 -m src.xai.xai --logging_level INFO --models resnet34 resnet50 densenet121 vit_b_16 alexnet vgg11 efficientnet --explanation lime --similarity_measure weighted_iou --num_images 128 --batch_size 8 --num_workers 1
+python3 -m src.xai.xai --logging_level INFO --models resnet34 resnet50 densenet121 vit_b_16 alexnet vgg11 efficientnet --explanation lime --similarity_measure weighted_iou --num_images 256 --batch_size 8 --num_workers 1
 ```
-
-The models we trained can be downloaded from [here](https://drive.google.com/drive/folders/1lYijb7mw1lnOqntwWt3dNgyCyu_NzpEB?usp=share_link). The models should be placed in the `models` folder under the respective model name, e.g. `models/ResNet34/_.ckpt`.
