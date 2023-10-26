@@ -101,5 +101,5 @@ python3 -m src.xai.xai --logging_level INFO --models resnet34 resnet50 densenet1
 ```
 
 ```bash
-python3 -m src.xai.xai --logging_level INFO --models resnet34 resnet50 densenet121 vit_b_16 alexnet vgg11 efficientnet --explanation lime --similarity_measure weighted_iou --num_images 256 --batch_size 8 --num_workers 1
+python3 -m src.xai.xai --logging_level INFO --models resnet34 resnet50 densenet121 vit_b_16 alexnet vgg11 efficientnet --explanation lime --similarity_measure thresholded_iou --num_images 256 --batch_size 8 --num_workers 1
 ```
