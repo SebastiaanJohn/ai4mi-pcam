@@ -1,7 +1,9 @@
+"""LIME implementation."""
+
 import skimage.segmentation
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+import torch.nn.functional as F  # noqa: N812
 from sklearn.linear_model import LinearRegression
 from tqdm.auto import tqdm
 
@@ -39,8 +41,12 @@ def generate_segmentation_map(
     segmap_max_dist = segmap_max_dist or min(img.shape[1:])
     return torch.from_numpy(
         skimage.segmentation.quickshift(
-            img, channel_axis=0, ratio=segmap_ratio, kernel_size=segmap_kernel_size, max_dist=segmap_max_dist
-        )
+            img,
+            channel_axis=0,
+            ratio=segmap_ratio,
+            kernel_size=segmap_kernel_size,
+            max_dist=segmap_max_dist,
+        ),
     ).to(device)
 
 
@@ -102,7 +108,10 @@ def compute_weights(perturbations: torch.Tensor, device: torch.device, kernel_si
 
 
 def perturb_img(
-    img: torch.Tensor, segmap: torch.Tensor, perturbations: torch.Tensor, device: torch.device
+    img: torch.Tensor,
+    segmap: torch.Tensor,
+    perturbations: torch.Tensor,
+    device: torch.device,
 ) -> torch.Tensor:
     """Perturb the image by blacking out all superpixels marked as 0.
 
@@ -185,7 +194,9 @@ def train_linear_model(
             Shape: [num_superpixels]
     """
     model = LinearRegression().fit(
-        perturbations.cpu().numpy(), probs_pred[:, label_target].cpu().numpy(), weights.cpu().numpy()
+        perturbations.cpu().numpy(),
+        probs_pred[:, label_target].cpu().numpy(),
+        weights.cpu().numpy(),
     )
     return torch.from_numpy(model.coef_).to(device)
 
@@ -273,13 +284,16 @@ def lime_helper(
     all_coefficients = [
         train_linear_model(perturbations, weights, probs_pred, label_pred, device)
         for perturbations, probs_pred, weights, label_pred in zip(
-            all_perturbations, all_probs_pred, all_weights, labels_pred
+            all_perturbations,
+            all_probs_pred,
+            all_weights,
+            labels_pred,
         )
     ]
 
     # Create the heatmaps.
     heatmap = torch.stack(
-        [create_heatmap(segmap, coefficients, device) for segmap, coefficients in zip(all_segmap, all_coefficients)]
+        [create_heatmap(segmap, coefficients, device) for segmap, coefficients in zip(all_segmap, all_coefficients)],
     )
 
     return heatmap, labels_pred

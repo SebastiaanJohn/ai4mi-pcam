@@ -1,3 +1,5 @@
+"""Integrated Gradients."""
+
 from typing import cast
 
 import torch
@@ -8,7 +10,10 @@ from src.xai.xai_helpers import predict_labels
 
 
 def integrated_gradients_helper(
-    imgs_preprocessed: torch.Tensor, model: nn.Module, baselines_preprocessed: torch.Tensor, steps: int = 20
+    imgs_preprocessed: torch.Tensor,
+    model: nn.Module,
+    baselines_preprocessed: torch.Tensor,
+    steps: int = 20,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Calculate gradients using Integrated Gradients.
 
@@ -81,7 +86,9 @@ def integrated_gradients(imgs_preprocessed: torch.Tensor, model: nn.Module) -> t
 
     for i in tqdm(range(len(imgs_preprocessed)), unit="image"):
         gradient, label_pred = integrated_gradients_helper(
-            imgs_preprocessed[i].unsqueeze(0), model, baselines_preprocessed[i].unsqueeze(0)
+            imgs_preprocessed[i].unsqueeze(0),
+            model,
+            baselines_preprocessed[i].unsqueeze(0),
         )
         gradients.append(gradient)
         labels_pred.append(label_pred)

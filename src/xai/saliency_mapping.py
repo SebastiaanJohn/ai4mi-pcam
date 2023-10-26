@@ -1,3 +1,5 @@
+"""Saliency Mapping."""
+
 from typing import cast
 
 import torch

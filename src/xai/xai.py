@@ -1,3 +1,5 @@
+"""Explainability methods for the PCAM dataset."""
+
 import argparse
 import logging
 from collections.abc import Callable, Sequence
@@ -37,7 +39,7 @@ class NDArrayGeneric(np.ndarray, Generic[DType]):
     """np.ndarray that allows for static type hinting of generics."""
 
     def __getitem__(self, key) -> DType:
-        return super().__getitem__(key)  # type: ignore
+        return super().__getitem__(key)
 
 
 def select_explanation_method(explanation_method_name: str) -> ExplanationMethod:
@@ -229,7 +231,7 @@ def explain_model(
         heatmaps_min = torch.min(heatmaps_agg, dim=-1).values.reshape(-1, 1, 1)
         heatmaps_max = torch.max(heatmaps_agg, dim=-1).values.reshape(-1, 1, 1)
         heatmaps_batch = (heatmaps_batch - heatmaps_min) / (heatmaps_max - heatmaps_min)  # normalize to [0, 1]
-        heatmaps_batch /= heatmaps_batch.sum(dim=(-2, -1), keepdims=True)  # type: ignore  # normalize to sum to 1
+        heatmaps_batch /= heatmaps_batch.sum(dim=(-2, -1), keepdims=True)  # normalize to sum to 1
         heatmaps_batch *= 96 * 96  # normalize to sum to 96*96 so that the average pixel value is always 1
 
         # Append the batches.
@@ -286,24 +288,29 @@ def explain_models(
         chars_left = 80 - 45 - len(model_name)
         logging.info("/" + " " * 64 + "\\")
         logging.info(
-            f"| {'=' * (chars_left // 2)} Calculating heatmaps for {model_name} {'='* (chars_left - chars_left // 2)} |"
+            f"| {'=' * (chars_left // 2)} Calculating heatmaps for {model_name} {'='* (chars_left - chars_left // 2)} |",
         )
         logging.info("\\" + " " * 64 + "/")
 
         # Resize the images to the input of the model if necessary.
         if model_name == "vit_b_16":
             cast(PCAMDataset, test_dataloader.dataset)._transform = transforms.Compose(
-                [transforms.Resize((224, 224)), to_tensor, normalize]
+                [transforms.Resize((224, 224)), to_tensor, normalize],
             )
         elif model_name == "inception_v3":
             cast(PCAMDataset, test_dataloader.dataset)._transform = transforms.Compose(
-                [transforms.Resize((299, 299)), to_tensor, normalize]
+                [transforms.Resize((299, 299)), to_tensor, normalize],
             )
         else:
             cast(PCAMDataset, test_dataloader.dataset)._transform = transforms.Compose([to_tensor, normalize])
 
         heatmaps, labels_pred = explain_model(
-            explanation_method_name, model_name, test_dataloader, device, batch_size, num_images
+            explanation_method_name,
+            model_name,
+            test_dataloader,
+            device,
+            batch_size,
+            num_images,
         )
 
         # Cast the heatmaps back to [b, 96, 96] if we resized the images.
@@ -315,11 +322,11 @@ def explain_models(
                     [
                         # Torch's type hint is not updated to their new API yet. The antialias
                         # argument is now a bool instead of a string.
-                        transforms.Resize((96, 96), antialias=True)  # type: ignore
-                    ]
+                        transforms.Resize((96, 96), antialias=True),
+                    ],
                 )(heatmaps),
             )
-            heatmaps /= heatmaps.sum(dim=(-2, -1), keepdims=True)  # type: ignore  # normalize to sum to 1
+            heatmaps /= heatmaps.sum(dim=(-2, -1), keepdims=True)  # normalize to sum to 1
             heatmaps *= 96 * 96  # normalize to sum to 96*96 so that the average pixel value is always 1
 
         # Append the results.
@@ -396,7 +403,8 @@ def thresholded_iou(heatmaps1: torch.Tensor, heatmaps2: torch.Tensor) -> torch.T
 
 
 def calculate_agreement(
-    heatmaps: list[torch.Tensor], similarity_measure: Literal["weighted_iou", "thresholded_iou"]
+    heatmaps: list[torch.Tensor],
+    similarity_measure: Literal["weighted_iou", "thresholded_iou"],
 ) -> np.ndarray:
     """Calculate the agreement between each pair of models.
 
@@ -513,7 +521,8 @@ def get_scalar_mappable(
 
     # Create the ScalarMappable color map.
     return matplotlib.cm.ScalarMappable(
-        norm=norm, cmap=(matplotlib.colors.LinearSegmentedColormap.from_list("x_white_y", color_list))
+        norm=norm,
+        cmap=(matplotlib.colors.LinearSegmentedColormap.from_list("x_white_y", color_list)),
     )
 
 
@@ -647,23 +656,29 @@ def plot_heatmaps(
 
     axs[1].imshow(heatmap1, cmap=sm.get_cmap(), norm=sm.norm)
     axs[1].set_title(
-        f"{heatmap_type} of {model_name1}\n(pred label: {pred_label1}, stddev: {torch.std(heatmap1.float()):.3f})"
+        f"{heatmap_type} of {model_name1}\n(pred label: {pred_label1}, stddev: {torch.std(heatmap1.float()):.3f})",
     )
     axs[1].axis("off")
 
     axs[2].imshow(heatmap2, cmap=sm.get_cmap(), norm=sm.norm)
     axs[2].set_title(
-        f"{heatmap_type} of {model_name2}\n(pred label: {pred_label2}, stddev: {torch.std(heatmap2.float()):.3f})"
+        f"{heatmap_type} of {model_name2}\n(pred label: {pred_label2}, stddev: {torch.std(heatmap2.float()):.3f})",
     )
     axs[2].axis("off")
 
     heatmap1 = heatmap1 if similarity_measure == "weighted_iou" else threshold_heatmaps(heatmap1)
     heatmap2 = heatmap2 if similarity_measure == "weighted_iou" else threshold_heatmaps(heatmap2)
-    axs[3].imshow(torch.min(heatmap1, heatmap2), cmap=sm.get_cmap() if similarity_measure == "weighted_iou" else "gray")
+    axs[3].imshow(
+        torch.min(heatmap1, heatmap2),
+        cmap=sm.get_cmap() if similarity_measure == "weighted_iou" else "gray",
+    )
     axs[3].set_title("Intersection")
     axs[3].axis("off")
 
-    axs[4].imshow(torch.max(heatmap1, heatmap2), cmap=sm.get_cmap() if similarity_measure == "weighted_iou" else "gray")
+    axs[4].imshow(
+        torch.max(heatmap1, heatmap2),
+        cmap=sm.get_cmap() if similarity_measure == "weighted_iou" else "gray",
+    )
     axs[4].set_title("Union")
     axs[4].axis("off")
 
@@ -695,7 +710,12 @@ def main(args: argparse.Namespace) -> None:
 
     # Calculate and cache the heatmaps for each model.
     heatmaps, labels_pred = explain_models(
-        args.explanation, args.models, test_dataloader, device, args.batch_size, args.num_images
+        args.explanation,
+        args.models,
+        test_dataloader,
+        device,
+        args.batch_size,
+        args.num_images,
     )
     for i, heatmaps_model in enumerate(heatmaps):
         heatmaps[i] = heatmaps_model.cpu()
@@ -706,11 +726,13 @@ def main(args: argparse.Namespace) -> None:
     max_model_name_length = max(map(len, args.models)) + 1
     logging.info(" HEATMAP SPECIFICITY ".center(66, "-"))
     for model_name, stddev_model, max_model in sorted(
-        zip(args.models, stddevs, maxs), key=lambda x: x[1], reverse=True
+        zip(args.models, stddevs, maxs),
+        key=lambda x: x[1],
+        reverse=True,
     ):
         logging.info(
             f"(stddev, max) of {model_name}{' ' * (max_model_name_length - len(model_name))}: "
-            f"({stddev_model:>5.3f}, {max_model:>6.3f})"
+            f"({stddev_model:>5.3f}, {max_model:>6.3f})",
         )
     logging.info("-" * 66)
 
@@ -742,7 +764,8 @@ def main(args: argparse.Namespace) -> None:
 if __name__ == "__main__":
     # Create the argument parser.
     parser = argparse.ArgumentParser(
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter, description="XAI Comparison"
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        description="XAI Comparison",
     )
 
     # Define command line arguments.
@@ -780,24 +803,24 @@ if __name__ == "__main__":
         "--num_images",
         type=int,
         default=100,
-        help="The number of images to generate an explanation for."
+        help="The number of images to generate an explanation for.",
     )
     parser.add_argument(
         "--batch_size",
         type=int,
         default=100,
-        help="The batch size to use when generating explanations."
+        help="The batch size to use when generating explanations.",
     )
     parser.add_argument(
         "--num_workers",
         type=int,
         default=1,
-        help="The number of workers to use when generating explanations."
+        help="The number of workers to use when generating explanations.",
     )
     parser.add_argument(
         "--plot_heatmaps",
         action="store_true",
-        help="Whether to plot the heatmaps. If True, you must specify 2 models."
+        help="Whether to plot the heatmaps. If True, you must specify 2 models.",
     )
     # fmt: on
 

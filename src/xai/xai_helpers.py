@@ -1,6 +1,8 @@
+"""Helper functions for XAI."""
+
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+import torch.nn.functional as F  # noqa: N812
 
 
 def predict_labels(imgs_preprocessed: torch.Tensor, model: nn.Module, requires_grad: bool = True) -> torch.Tensor:
@@ -31,5 +33,5 @@ def predict_labels(imgs_preprocessed: torch.Tensor, model: nn.Module, requires_g
         # We want to pretend like we have 2 output classes, so we need to apply a
         # sigmoid to the positive class and that set the negative class to 1 - sigmoid.
         return torch.cat((1 - F.sigmoid(logits), F.sigmoid(logits)), dim=1)
-    else:
-        return F.softmax(logits, dim=1)  # convert to probabilities
+
+    return F.softmax(logits, dim=1)  # convert to probabilities
